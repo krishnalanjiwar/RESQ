@@ -232,7 +232,7 @@ class HomeScreen extends ConsumerWidget {
                         decoration: BoxDecoration(
                           color: AppColors.surfaceLight.withOpacity(0.4),
                           borderRadius: BorderRadius.circular(8),
-                          border: Border.side(
+                          border: Border.all(
                             color: battery.level < 20
                                 ? AppColors.batteryLow
                                 : AppColors.successGreen,
