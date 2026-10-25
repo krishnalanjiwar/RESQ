@@ -52,10 +52,31 @@ class HiveResqStore implements ResqStore {
   final Box<String> _envelopes;
   final Box<String> _meta;
 
-  static Future<HiveResqStore> open() async {
+  static const String _envelopesBox = 'envelopes_v2';
+  static const String _metaBox = 'meta_v2';
+
+  /// Opens the encrypted boxes with a 32-byte [key] held in the Android
+  /// Keystore. If the boxes can't be opened (key lost after reinstall or
+  /// corrupted files) they are deleted and recreated: the app starts with
+  /// empty local data instead of refusing to start.
+  static Future<HiveResqStore> open(List<int> key) async {
     await Hive.initFlutter('resq');
-    final envelopes = await Hive.openBox<String>('envelopes_v1');
-    final meta = await Hive.openBox<String>('meta_v1');
+    final cipher = HiveAesCipher(key);
+    Future<Box<String>> openOrReset(String name) async {
+      try {
+        return await Hive.openBox<String>(name, encryptionCipher: cipher);
+      } on Object {
+        await Hive.deleteBoxFromDisk(name);
+        return Hive.openBox<String>(name, encryptionCipher: cipher);
+      }
+    }
+
+    // Unencrypted boxes from 0.8.0 builds are removed: their data must not stay readable on disk.
+    for (final legacy in ['envelopes_v1', 'meta_v1']) {
+      if (await Hive.boxExists(legacy)) await Hive.deleteBoxFromDisk(legacy);
+    }
+    final envelopes = await openOrReset(_envelopesBox);
+    final meta = await openOrReset(_metaBox);
     if (meta.get('schema') == null) await meta.put('schema', '${ResqStore.schemaVersion}');
     return HiveResqStore._(envelopes, meta);
   }

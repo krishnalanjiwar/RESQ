@@ -190,7 +190,8 @@ class _MySosCard extends ConsumerWidget {
           KeyValue('SENT', '${ago(s.claimedAtMs, node.nowMs)} · to ${view.delivery.sentTo} peer(s) · ${view.delivery.acks} ack(s)'),
           KeyValue('PRIVACY', privacy),
           if (s.location != null) KeyValue('LOCATION', '±${s.location!.accuracyM.round()} m') else const KeyValue('LOCATION', 'LOCATION NOT PROVIDED'),
-          if (view.state.primary != null) const KeyValue('NOTE', 'Acceptance does not mean the responder has left or arrived.'),
+          if (view.state.phase == SosPhase.accepted)
+            const KeyValue('NOTE', 'Acceptance does not mean the responder has left or arrived.'),
           if (s.text != null) Padding(padding: const EdgeInsets.only(top: 4), child: Text('"${s.text}"', style: const TextStyle(fontSize: 12))),
           if (!closed) ...[
             const SizedBox(height: 8),

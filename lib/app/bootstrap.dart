@@ -3,31 +3,29 @@ import 'dart:convert';
 import 'package:flutter/services.dart';
 
 import '../core/clock.dart';
+import '../core/ids.dart';
 import '../crypto/b64.dart';
 import '../crypto/identity.dart';
 import '../crypto/key_store.dart';
 import '../crypto/signatures.dart';
 import '../data/resq_store.dart';
+import '../device/alerts.dart';
 import '../device/device_services.dart';
 import '../mesh/nearby_transport.dart';
 import '../node/resq_node.dart';
+import 'mesh_runtime.dart';
 
 /// Everything the app needs, created once in a fixed order:
-/// storage → identity (secure storage) → trust anchors → node.
+/// secure keys → encrypted storage → trust anchors → node → runtime.
 class AppServices {
-  const AppServices({
-    required this.node,
-    required this.battery,
-    required this.location,
-    required this.permissions,
-    required this.foreground,
-  });
+  const AppServices({required this.node, required this.runtime, required this.keysRecovered});
 
   final ResqNode node;
-  final BatteryService battery;
-  final LocationService location;
-  final PermissionsService permissions;
-  final ForegroundService foreground;
+  final MeshRuntime runtime;
+
+  /// True if secure storage was unreadable and keys were regenerated (e.g.
+  /// after a restore or Keystore reset): local data started fresh.
+  final bool keysRecovered;
 }
 
 class BootstrapException implements Exception {
@@ -41,18 +39,33 @@ class BootstrapException implements Exception {
 }
 
 Future<AppServices> bootstrap() async {
-  final ResqStore store;
+  const secrets = SecureSecretStore();
+
+  // Keys first. A Keystore that can't decrypt its own data (restored backup,
+  // OS reset) must not brick the app: wipe the unreadable keys and start fresh.
+  var recovered = false;
+  LocalIdentity identity;
+  List<int> storageKey;
   try {
-    store = await HiveResqStore.open();
-  } on Object catch (e) {
-    throw BootstrapException('LOCAL STORAGE', e);
+    identity = await _loadOrCreateIdentity(secrets);
+    storageKey = await _loadOrCreateStorageKey(secrets);
+  } on Object {
+    recovered = true;
+    try {
+      await secrets.delete('identity_v1');
+      await secrets.delete('storage_key_v1');
+      identity = await _loadOrCreateIdentity(secrets);
+      storageKey = await _loadOrCreateStorageKey(secrets);
+    } on Object catch (e) {
+      throw BootstrapException('IDENTITY KEYS (secure storage)', e);
+    }
   }
 
-  final LocalIdentity identity;
+  final ResqStore store;
   try {
-    identity = await _loadOrCreateIdentity(const SecureSecretStore());
+    store = await HiveResqStore.open(storageKey);
   } on Object catch (e) {
-    throw BootstrapException('IDENTITY KEYS (secure storage)', e);
+    throw BootstrapException('LOCAL STORAGE', e);
   }
 
   final anchors = <String>{};
@@ -75,13 +88,16 @@ Future<AppServices> bootstrap() async {
     provisionedAnchors: anchors,
   );
 
-  return AppServices(
+  final runtime = MeshRuntime(
     node: node,
     battery: BatteryService(),
     location: LocationService(),
     permissions: PermissionsService(),
     foreground: ForegroundService(),
+    alerts: AlertService(),
   );
+  await runtime.start();
+  return AppServices(node: node, runtime: runtime, keysRecovered: recovered);
 }
 
 /// The identity seeds live only in OS-backed secure storage (Android Keystore).
@@ -91,5 +107,15 @@ Future<LocalIdentity> _loadOrCreateIdentity(SecretStore secrets) async {
   if (imported != null) return imported;
   final fresh = await LocalIdentity.generate();
   await secrets.write('identity_v1', fresh.exportSeeds());
+  return fresh;
+}
+
+/// 32-byte AES key for the local database, also held in secure storage.
+Future<List<int>> _loadOrCreateStorageKey(SecretStore secrets) async {
+  final saved = await secrets.read('storage_key_v1');
+  final bytes = saved == null ? null : unb64(saved);
+  if (bytes != null && bytes.length == 32) return bytes;
+  final fresh = randomBytes(32);
+  await secrets.write('storage_key_v1', b64(fresh));
   return fresh;
 }

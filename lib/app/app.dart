@@ -28,7 +28,7 @@ class _RoleRouter extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     ref.watch(nodeVersionProvider);
-    ref.watch(deviceControllerProvider); // starts device timers
+    ref.watch(deviceControllerProvider);
     final role = ref.watch(nodeProvider).role;
     return switch (role) {
       null => const RoleSelectionScreen(),

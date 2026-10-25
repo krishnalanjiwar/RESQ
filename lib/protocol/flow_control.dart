@@ -21,6 +21,8 @@ class SeenCache {
 
   void prune(int nowMs) => _expiryById.removeWhere((_, exp) => exp <= nowMs);
 
+  void clear() => _expiryById.clear();
+
   int get length => _expiryById.length;
 }
 

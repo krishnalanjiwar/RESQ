@@ -54,3 +54,6 @@ app.*.map.json
 
 # Gradle build outputs
 /android/build/
+
+# Spike build outputs
+/spikes/**/build/

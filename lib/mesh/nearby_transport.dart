@@ -88,7 +88,11 @@ class NearbyTransport implements MeshTransport {
         onDisconnected: _onDisconnected,
         serviceId: serviceId,
       );
-      _emit(TransportStatus(adv, adv ? 'advertising' : 'advertising failed'));
+      _emit(TransportStatus(adv, adv ? 'advertising' : 'advertising failed — check Bluetooth and permissions'));
+      if (!adv) {
+        _running = false;
+        return;
+      }
       await _ensureDiscovery();
       _rediscover = Timer.periodic(const Duration(minutes: 2), (_) => unawaited(_ensureDiscovery(force: true)));
     } on Object catch (e) {
@@ -98,7 +102,7 @@ class NearbyTransport implements MeshTransport {
 
   Future<void> _ensureDiscovery({bool force = false}) async {
     if (!_running || _discovering) return;
-    if (_lowPower && _connected.isNotEmpty && !force) return;
+    if (!force && (_lowPower ? _connected.isNotEmpty : _connected.length >= wellConnectedPeers)) return;
     try {
       _discovering = await _nearby.startDiscovery(
         _me,
@@ -123,18 +127,21 @@ class NearbyTransport implements MeshTransport {
         onEndpointLost: (_) {},
         serviceId: serviceId,
       );
-      if (_lowPower && _connected.isNotEmpty) {
-        // Low power: brief discovery window, then pause.
-        Timer(const Duration(seconds: 20), _maybePauseDiscovery);
-      }
+      // Forced re-scan window: pause again after 20 s if still well connected.
+      Timer(const Duration(seconds: 20), _maybePauseDiscovery);
     } on Object catch (e) {
       _discovering = false;
       _emit(TransportStatus(true, 'discovery failed: ${e.runtimeType}'));
     }
   }
 
+  /// Discovery degrades existing Nearby links. Pause it once well connected
+  /// (or connected at all in low power); the 2-minute timer re-scans briefly.
+  static const int wellConnectedPeers = 3;
+
   void _maybePauseDiscovery() {
-    if (_lowPower && _discovering && _connected.isNotEmpty) {
+    final enough = _lowPower ? _connected.isNotEmpty : _connected.length >= wellConnectedPeers;
+    if (_discovering && enough) {
       _discovering = false;
       unawaited(_nearby.stopDiscovery());
     }

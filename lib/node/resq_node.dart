@@ -124,8 +124,13 @@ class ResqNode implements WorldView {
   final Map<String, int> _firstSeen = {};
   final Map<String, Set<String>> _directIdentities = {};
   final Map<String, String> _penalties = {};
+  final Map<String, int> _penaltyUntil = {};
+  static const Duration penaltyDuration = Duration(hours: 24);
   final Map<String, String> _endpointIdentity = {};
   final Map<String, int> _authFailuresByEndpoint = {};
+
+  /// Recent (sender ts - local now) offsets from direct neighbours, for the clock warning.
+  final List<int> _clockOffsets = [];
 
   // ---- Own-message delivery evidence (persisted) ----
   final Map<String, Set<String>> _sentTo = {};
@@ -217,8 +222,9 @@ class ResqNode implements WorldView {
 
   Future<void> start() async {
     _transportSub ??= transport.events.listen(_onTransport);
+    // Running state is set only by the transport's own status events, so a
+    // radio that failed to start is never reported as running.
     await transport.start(_meshName());
-    _transportRunning = true;
     log.add(nowMs, LogCategory.mesh, 'TRANSPORT_START', transport.label);
     _changed();
   }
@@ -309,6 +315,18 @@ class ResqNode implements WorldView {
     if (cred != null) _myCredential = Credential.fromJson(jsonDecode(cred));
     final pinned = store.getMeta('pinned_anchors');
     if (pinned != null) _pinnedAnchors.addAll((jsonDecode(pinned) as List).cast<String>());
+    final penalties = store.getMeta('penalties');
+    if (penalties != null) {
+      final now = clock.nowMs();
+      final m = jsonDecode(penalties) as Map<String, dynamic>;
+      for (final e in m.entries) {
+        final v = e.value as Map<String, dynamic>;
+        if ((v['until'] as int) > now) {
+          _penalties[e.key] = v['reason'] as String;
+          _penaltyUntil[e.key] = v['until'] as int;
+        }
+      }
+    }
     final delivery = store.getMeta('delivery');
     if (delivery != null) {
       final m = jsonDecode(delivery) as Map<String, dynamic>;
@@ -439,7 +457,7 @@ class ResqNode implements WorldView {
     if (flood != null) {
       if (flood == 'QUARANTINED_NOW') {
         for (final id in _directIdentities[endpoint] ?? const <String>{}) {
-          _penalties[id] = 'LINK_FLOODING';
+          _penalise(id, 'LINK_FLOODING');
         }
         log.add(now, LogCategory.security, 'LINK_QUARANTINED', 'flood/battery-drain attempt blocked');
         _invalidate();
@@ -467,7 +485,7 @@ class ResqNode implements WorldView {
       log.add(now, LogCategory.security, 'MESSAGE_AUTHENTICATION_FAILED', 'type ${env.type.wire}');
       if (failures >= 3) {
         for (final id in _directIdentities[endpoint] ?? const <String>{}) {
-          _penalties[id] = 'SIGNATURE_FAILURES';
+          _penalise(id, 'SIGNATURE_FAILURES');
         }
         _invalidate();
       }
@@ -477,6 +495,8 @@ class ResqNode implements WorldView {
 
     if (env.hop == 0) {
       _directIdentities.putIfAbsent(endpoint, () => {}).add(env.origin);
+      _clockOffsets.add(env.ts - now);
+      if (_clockOffsets.length > 30) _clockOffsets.removeAt(0);
     }
     _firstSeen.putIfAbsent(env.origin, () => now);
 
@@ -498,6 +518,14 @@ class ResqNode implements WorldView {
     }
     _invalidate();
     _changed();
+  }
+
+  void _penalise(String identity, String reason) {
+    _penalties[identity] = reason;
+    _penaltyUntil[identity] = nowMs + penaltyDuration.inMilliseconds;
+    unawaited(store.putMeta('penalties', jsonEncode({
+      for (final e in _penalties.entries) e.key: {'reason': e.value, 'until': _penaltyUntil[e.key] ?? 0},
+    })));
   }
 
   bool _withinOriginLimits(Envelope env, int now) {
@@ -646,7 +674,7 @@ class ResqNode implements WorldView {
     if (cred != null) {
       credValid = await signatures.verify(canonicalBytes(cred.signedBody()), cred.sig, cred.issuer);
       if (!credValid || cred.subject != env.origin) {
-        _penalties[env.origin] = 'FORGED_CREDENTIAL';
+        _penalise(env.origin, 'FORGED_CREDENTIAL');
         log.add(receivedAt, LogCategory.security, 'FORGED_CREDENTIAL', 'identity ${shortKey(env.origin)} quarantined');
       }
     }
@@ -785,7 +813,7 @@ class ResqNode implements WorldView {
     for (final peer in transport.connectedPeers) {
       if (await transport.send(peer, wire)) _recordSent(id, peer);
     }
-    await _saveDelivery();
+    if (type == MsgType.sos) await _saveDelivery();
     _invalidate();
     _changed();
     return env;
@@ -842,18 +870,23 @@ class ResqNode implements WorldView {
       if (_myCredential != null) 'cred': _myCredential!.toJson(),
       if (_authorityName != null) 'auth': _authorityName,
       'eng': engaged,
-    }, ttl: 4);
+    }, ttl: 3);
   }
 
   Future<void> _publishEvent(String sosId, SosEventKind kind, {String? note}) async {
     _lamport++;
     await store.putMeta('lamport', '$_lamport');
-    await _publish(MsgType.event, {
-      'sos': sosId,
-      'kind': kind.name,
-      'lam': _lamport,
-      if (note != null && note.isNotEmpty) 'note': note.length > Limits.maxNoteChars ? note.substring(0, Limits.maxNoteChars) : note,
-    });
+    await _publish(
+      MsgType.event,
+      {
+        'sos': sosId,
+        'kind': kind.name,
+        'lam': _lamport,
+        if (note != null && note.isNotEmpty)
+          'note': note.length > Limits.maxNoteChars ? note.substring(0, Limits.maxNoteChars) : note,
+      },
+      lifetime: kind == SosEventKind.heartbeat ? Limits.heartbeatLifetime : null,
+    );
   }
 
   // =====================================================================
@@ -1021,6 +1054,14 @@ class ResqNode implements WorldView {
     _revoked.clear();
     _sentTo.clear();
     _ackedBy.clear();
+    _beacons.clear();
+    _beaconEnvelopeByOrigin.clear();
+    _penalties.clear();
+    _penaltyUntil.clear();
+    _firstSeen.clear();
+    _lapsed.clear();
+    _assignmentSeenAt.clear();
+    _seen.clear();
     _role = null;
     log.add(nowMs, LogCategory.storage, 'LOCAL_DATA_WIPED');
     _invalidate();
@@ -1103,8 +1144,29 @@ class ResqNode implements WorldView {
     final excluded = <String, Set<String>>{
       for (final s in open) s.id: {..._states[s.id]!.declinedBy, ..._states[s.id]!.orphaned, ...?_lapsed[s.id]},
     };
+    // An encrypted SOS this phone cannot open was not addressed to it: never
+    // offer it here (the requester sealed it for other, verified responders).
+    for (final s in open) {
+      if (s.sealed && !s.readable) excluded[s.id]!.add(selfId);
+    }
     final busy = {for (final st in _states.values) if (st.isActive && st.primary != null) st.primary!};
     _plan = _matcher.plan(openSos: open, view: this, excluded: excluded, busyResponders: busy);
+    // Offer windows cycle: once every candidate has let the window pass, start
+    // a fresh round instead of leaving the SOS unmatched forever. Explicit
+    // declines stay excluded.
+    final exhausted = [
+      for (final s in open)
+        if (_plan.unmatched[s.id] == 'NO_ELIGIBLE_RESPONDER' && (_lapsed[s.id]?.isNotEmpty ?? false)) s.id,
+    ];
+    if (exhausted.isNotEmpty) {
+      for (final id in exhausted) {
+        final lapsed = _lapsed.remove(id) ?? const <String>{};
+        excluded[id]!.removeAll(lapsed.difference(_states[id]!.declinedBy));
+        _assignmentSeenAt.removeWhere((key, _) => key.startsWith('$id|'));
+      }
+      log.add(now, LogCategory.dispatch, 'OFFER_ROUND_RESTARTED', '${exhausted.length} request(s)');
+      _plan = _matcher.plan(openSos: open, view: this, excluded: excluded, busyResponders: busy);
+    }
     _zones = _matcher.chain.hazards.zones(this);
     _cacheVersion = _version;
   }
@@ -1125,6 +1187,20 @@ class ResqNode implements WorldView {
   }
 
   TrustAssessment trustOf(String identity) => _trust.assess(identity, this);
+
+  /// Median offset of direct neighbours' clocks vs ours, or null with too few samples.
+  Duration? get clockOffset {
+    if (_clockOffsets.length < 3) return null;
+    final sorted = [..._clockOffsets]..sort();
+    return Duration(milliseconds: sorted[sorted.length ~/ 2]);
+  }
+
+  /// True when nearby phones disagree with this phone's clock by more than a few
+  /// minutes: its messages may be rejected as expired or "from the future".
+  bool get clockWarning {
+    final off = clockOffset;
+    return off != null && off.abs() > Limits.clockWarningSkew;
+  }
 
   ReconciliationReport get reconciliationReport => config.reconciler.report(states.values, nowMs);
 

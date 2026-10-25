@@ -24,7 +24,10 @@
 
     <application
         android:label="RESQ"
-        android:name="${applicationName}"
+        android:name=".ResqApplication"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"

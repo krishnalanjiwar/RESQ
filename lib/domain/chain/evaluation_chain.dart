@@ -136,6 +136,16 @@ class EvaluationChain {
       available = false;
       dispatchReasons.add('PRESENCE_EXPIRED');
     }
+    if (responder.origin == sos.origin) {
+      available = false;
+      dispatchReasons.add('OWN_REQUEST');
+    }
+    // Sealed SOS are encrypted to verified responders only; anyone else would
+    // get an offer without the text or precise location.
+    if (sos.sealed && t.credentialStatus != CredentialStatus.verified) {
+      available = false;
+      dispatchReasons.add('SEALED_FOR_VERIFIED_RESPONDERS');
+    }
     if (fit < 0.2) dispatchReasons.add('NO_CAPABILITY_MATCH (general help only)');
     final score = sos.urgency.weight * c.pClaim * h.pSafe * tScore * fit / r.cost;
     final eligible = claimPassed && h.gatePassed && !t.quarantined && available;

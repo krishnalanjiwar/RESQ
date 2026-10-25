@@ -32,7 +32,13 @@ class StatusDrawer extends ConsumerWidget {
         child: ListView(padding: const EdgeInsets.all(16), children: [
           const Text('STATUS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
           const SizedBox(height: 4),
-          Text('RESQ 0.8.0 · protocol v${Limits.protocolVersion}', style: const TextStyle(fontSize: 11)),
+          Text('PROTOCOL v${Limits.protocolVersion}', style: const TextStyle(fontSize: 11)),
+          if (ref.read(appServicesProvider).keysRecovered)
+            const Text('⚠ KEYS WERE UNREADABLE AT STARTUP — NEW IDENTITY CREATED, LOCAL DATA RESET',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          if (node.clockWarning)
+            Text('⚠ CLOCK DIFFERS FROM NEARBY PHONES BY ${node.clockOffset!.inMinutes.abs()} MIN',
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
           const SectionTitle('ROLE'),
           Wrap(spacing: 8, runSpacing: 8, children: [
             for (final r in NodeRole.values)
@@ -45,7 +51,9 @@ class StatusDrawer extends ConsumerWidget {
           ]),
           const SectionTitle('RADIO'),
           KeyValue('TRANSPORT', '${node.transport.isSimulated ? 'SIMULATED' : 'REAL'} · ${node.transport.label}'),
-          KeyValue('STATE', node.transportRunning ? 'RUNNING' : 'OFF', emphasis: true),
+          KeyValue('STATE', node.transportRunning ? 'RUNNING' : (device.meshOn ? 'NOT RUNNING' : 'OFF'), emphasis: true),
+          if (device.bluetoothOff) const KeyValue('BLUETOOTH', 'OFF'),
+          if (device.locationServicesOff) const KeyValue('LOCATION SVC', 'OFF'),
           KeyValue('LAST EVENT', node.transportDetail),
           KeyValue('PEERS', '${counts.connectedPeers} connected'),
           KeyValue('BACKGROUND', device.foregroundRunning ? 'FOREGROUND SERVICE ACTIVE' : 'BACKGROUND DISCOVERY NOT ACTIVE'),
@@ -62,7 +70,8 @@ class StatusDrawer extends ConsumerWidget {
           KeyValue('KNOWN', '${counts.sosKnown} SOS · ${counts.beaconsKnown} nodes · ${counts.hazardsKnown} hazards'),
           KeyValue('DEDUPE CACHE', '${counts.seenCacheSize} ids'),
           const SectionTitle('SECURITY'),
-          const KeyValue('IDENTITY KEYS', 'READY · Ed25519 + X25519 in OS secure storage'),
+          KeyValue('IDENTITY KEYS', 'LOADED · Ed25519 + X25519 · ${node.identity.public.signKey.substring(0, 8)}…'),
+          const KeyValue('LOCAL DATA', 'AES-encrypted · key in OS secure storage'),
           KeyValue('FINGERPRINT', PublicIdentity.fingerprintOf(node.selfId)),
           KeyValue('ENCRYPTION', verifiedKeys > 0
               ? 'SOS SEALED TO $verifiedKeys VERIFIED RESPONDER KEY(S)'

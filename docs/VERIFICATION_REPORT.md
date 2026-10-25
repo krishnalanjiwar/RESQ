@@ -30,6 +30,36 @@ Test suites written and waiting to run:
 - `test/red_team_test.dart`
 - `test/app_test.dart`
 
+## Bug-fix pass (2026-10-25)
+
+A code review found 23 issues. All were fixed and re-verified with `flutter analyze` (clean) and `flutter test` (**66 passed**: the original 59 plus 7 regression tests). The C5 regression test was mutation-checked: it fails with the fix disabled.
+
+| ID | Fix | Proof |
+|---|---|---|
+| C1 | Link flood guard tolerates a full store-and-forward replay (burst 260 > sync batch 200) | regression test |
+| C2 | Process-wide cached Flutter engine (`ResqApplication`) survives the Activity; mesh auto-restores headless when the service restarts | device test pending |
+| C3 | High-priority alerts (sound + vibration) for new offers, victim status changes and stand-downs | device test pending |
+| C4 | Sealed SOS only offered to verified responders; a phone that can't open it never gets the offer | regression test |
+| C5 | Offer rounds restart once every candidate has lapsed (declines stay excluded) | regression test, mutation-checked |
+| H1 | Radio state comes only from real transport status; UI shows RADIO NOT RUNNING, Bluetooth off, location off | device test pending |
+| H2 | Mesh-on choice persisted and restored at launch | device test pending |
+| H3 | Clock skew tolerance 30 min, plus a "this phone's clock differs" warning from neighbour samples | code review |
+| H4 | Heartbeats expire after 15 min instead of 24 h | code review |
+| H5 | Backups disabled; unreadable Keystore → new keys instead of a startup failure | device test pending |
+| H6 | Only the Bluetooth permissions are required; location / Wi-Fi / notifications become visible warnings | device test pending |
+| M1 | UI rebuilds throttled to 4/s | code review |
+| M2 | Beacons travel 3 hops instead of 4 | code review |
+| M3 | Discovery pauses once 3 peers are connected; periodic re-scan | device test pending |
+| M4 | Co-location Sybil rule ignores verified or vouched identities and differing skills | 3 regression tests |
+| M5 | Data wipe also clears the duplicate filter, beacons, penalties and offer state | code review |
+| M6 | Acceptance caveat only shown while the status is ACCEPTED | code review |
+| M7 | Hazard size chosen by the reporter (widened by GPS uncertainty) | code review |
+| M8 | Drawer lines derived from live state | code review |
+| M9 | Penalties persisted for 24 h | code review |
+| M10 | Local database AES-encrypted, key in Keystore | device test pending |
+| L1 | A responder is never matched to their own SOS | regression test |
+| L2 | Delivery state persisted only for SOS publishes | code review |
+
 ## Verified on physical devices
 
 **None yet.** Device plan (2 phones available, D8):
@@ -58,7 +88,7 @@ Everything in Phases 1–8. Specifically:
 
 - The sealed-box composition (age-style X25519 + HKDF + XChaCha20-Poly1305) has **not been independently reviewed** (ADR-002).
 - No forward secrecy for sealed SOS.
-- Hive is not encrypted at rest (ADR-006).
+- Local data is AES-encrypted, but a rooted phone with Keystore access can still read it (ADR-006).
 - Signatures prove key control, not real-world identity or qualifications.
 - Trust anchors in the demo are self-declared **DEMO AUTHORITY** phones.
 

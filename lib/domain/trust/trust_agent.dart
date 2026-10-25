@@ -115,8 +115,11 @@ class TrustAgent {
         break;
       }
     }
-    // Sybil: a tight cluster of brand-new identities reported through the same neighbour.
-    if (sybil == 1.0 && beacon?.location != null) {
+    // Sybil: a tight cluster of brand-new, unverified identities with identical
+    // claims reported through the same neighbour. Verified or vouched
+    // responders (a real team arriving together) are never counted.
+    final vouched = view.vouchesFor(identity).isNotEmpty;
+    if (sybil == 1.0 && beacon?.location != null && status != CredentialStatus.verified && !vouched) {
       final cluster = _colocatedCluster(beacon!, view);
       if (cluster >= Limits.colocatedClusterSize) {
         sybil = 0.4;
@@ -168,6 +171,8 @@ class TrustAgent {
     for (final b in view.beacons.values) {
       final loc = b.location;
       if (loc == null || b.viaEndpoint != subject.viaEndpoint) continue;
+      if (b.credential != null || view.vouchesFor(b.origin).isNotEmpty) continue;
+      if (b.declaredCaps.length != subject.declaredCaps.length || !b.declaredCaps.containsAll(subject.declaredCaps)) continue;
       final first = view.firstSeenMs(b.origin);
       if (first == null || view.nowMs - first > clusterWindow.inMilliseconds) continue;
       if (loc.point.distanceTo(p) <= Limits.colocatedRadiusM) count++;

@@ -68,23 +68,28 @@ class PermissionSummary {
 
   final Map<Permission, PermissionStatus> statuses;
 
-  /// Radio permissions needed by Nearby Connections on this Android version.
-  /// Permissions that don't apply to this OS version report as granted/restricted.
-  bool get radioGranted => [
-        Permission.bluetoothScan,
-        Permission.bluetoothAdvertise,
-        Permission.bluetoothConnect,
-        Permission.nearbyWifiDevices,
-        Permission.locationWhenInUse,
-      ].every((p) {
-        final s = statuses[p];
-        return s == null || s.isGranted || s.isLimited || s.isRestricted;
-      });
+  bool _ok(Permission p) {
+    final s = statuses[p];
+    return s == null || s.isGranted || s.isLimited || s.isRestricted;
+  }
+
+  /// The Bluetooth permissions are the hard requirement for Nearby
+  /// Connections (on Android 11 and below they report granted automatically).
+  /// Location and Wi-Fi peers improve discovery but don't block the mesh;
+  /// a missing one is surfaced as a warning instead.
+  bool get radioGranted =>
+      _ok(Permission.bluetoothScan) && _ok(Permission.bluetoothAdvertise) && _ok(Permission.bluetoothConnect);
+
+  List<String> get warnings => [
+        if (!_ok(Permission.locationWhenInUse)) 'LOCATION DENIED — discovery may fail on Android 11 and below',
+        if (!_ok(Permission.nearbyWifiDevices)) 'NEARBY WI-FI DENIED — Bluetooth only, shorter range',
+        if (!_ok(Permission.notification)) 'NOTIFICATIONS DENIED — no alert sound for new requests',
+      ];
 
   bool get anyPermanentlyDenied => statuses.values.any((s) => s.isPermanentlyDenied);
 
   String get label => radioGranted
-      ? 'NEARBY ACCESS GRANTED'
+      ? (warnings.isEmpty ? 'NEARBY ACCESS GRANTED' : 'NEARBY ACCESS GRANTED (LIMITED)')
       : (anyPermanentlyDenied ? 'NEARBY ACCESS BLOCKED — OPEN SETTINGS' : 'NEARBY ACCESS NOT GRANTED');
 }
 

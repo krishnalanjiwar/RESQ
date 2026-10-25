@@ -25,12 +25,22 @@ abstract final class Limits {
   static const Duration linkLifetime = Duration(minutes: 1);
 
   /// Clock skew tolerated on sender timestamps (they are claims, not facts).
-  static const Duration maxFutureSkew = Duration(minutes: 10);
+  /// Phone clocks drift or reset after a dead battery; 30 min keeps such phones
+  /// in the mesh while still bounding how long a message can be made to live.
+  static const Duration maxFutureSkew = Duration(minutes: 30);
 
-  /// Per-link flood control (token bucket): sustained rate and burst.
-  static const double linkMessagesPerSecond = 4;
-  static const int linkBurst = 40;
-  static const int linkStrikesBeforeQuarantine = 25;
+  /// Peer clock offset beyond which the UI warns that this phone's clock may be wrong.
+  static const Duration clockWarningSkew = Duration(minutes: 5);
+
+  /// Heartbeats only need to outlive the orphan timeout, not a whole day.
+  static const Duration heartbeatLifetime = Duration(minutes: 15);
+
+  /// Per-link flood control (token bucket). The burst must exceed the
+  /// store-and-forward replay a healthy peer sends on connect (syncBatchMax
+  /// plus link frames), otherwise honest neighbours get quarantined.
+  static const double linkMessagesPerSecond = 8;
+  static const int linkBurst = 260;
+  static const int linkStrikesBeforeQuarantine = 60;
   static const Duration linkQuarantine = Duration(minutes: 10);
 
   /// Per-origin limits on what we are willing to relay.

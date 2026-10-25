@@ -7,27 +7,59 @@ import '../domain/models.dart';
 import '../node/resq_node.dart';
 import '../sim/simulator.dart';
 import 'bootstrap.dart';
+import 'mesh_runtime.dart';
 
 /// Overridden in main() with the bootstrapped services.
 final appServicesProvider = Provider<AppServices>((ref) => throw UnimplementedError('bootstrap first'));
 
 final nodeProvider = Provider<ResqNode>((ref) => ref.watch(appServicesProvider).node);
 
-/// Emits the node's version on every state change; widgets watch this to rebuild.
+final meshRuntimeProvider = Provider<MeshRuntime>((ref) => ref.watch(appServicesProvider).runtime);
+
+/// Emits the node's version when its state changes, throttled to at most one
+/// event per 250 ms (trailing edge) so a busy mesh doesn't rebuild the UI and
+/// re-run the matcher on every received frame.
 final nodeVersionProvider = StreamProvider<int>((ref) {
   final node = ref.watch(nodeProvider);
-  return node.changes.map((_) => node.version);
+  final controller = StreamController<int>();
+  Timer? pending;
+  final sub = node.changes.listen((_) {
+    pending ??= Timer(const Duration(milliseconds: 250), () {
+      pending = null;
+      if (!controller.isClosed) controller.add(node.version);
+    });
+  });
+  ref.onDispose(() {
+    pending?.cancel();
+    unawaited(sub.cancel());
+    unawaited(controller.close());
+  });
+  return controller.stream;
 });
 
+/// Snapshot of the device runtime for the UI.
 class DeviceState {
   const DeviceState({
-    this.meshOn = false,
-    this.permissions,
-    this.locationStatus,
-    this.lastFix,
-    this.foregroundRunning = false,
-    this.busy = false,
+    required this.meshOn,
+    required this.permissions,
+    required this.locationStatus,
+    required this.lastFix,
+    required this.foregroundRunning,
+    required this.busy,
+    required this.bluetoothOff,
+    required this.locationServicesOff,
   });
+
+  factory DeviceState.of(MeshRuntime r) => DeviceState(
+        meshOn: r.meshOn,
+        permissions: r.permissionSummary,
+        locationStatus: r.locationStatus,
+        lastFix: r.lastFix,
+        foregroundRunning: r.foregroundRunning,
+        busy: r.busy,
+        bluetoothOff: r.bluetoothOff,
+        locationServicesOff: r.locationServicesOff,
+      );
 
   final bool meshOn;
   final PermissionSummary? permissions;
@@ -35,82 +67,30 @@ class DeviceState {
   final LocationFix? lastFix;
   final bool foregroundRunning;
   final bool busy;
-
-  DeviceState copyWith({
-    bool? meshOn,
-    PermissionSummary? permissions,
-    LocationStatus? locationStatus,
-    LocationFix? lastFix,
-    bool? foregroundRunning,
-    bool? busy,
-  }) =>
-      DeviceState(
-        meshOn: meshOn ?? this.meshOn,
-        permissions: permissions ?? this.permissions,
-        locationStatus: locationStatus ?? this.locationStatus,
-        lastFix: lastFix ?? this.lastFix,
-        foregroundRunning: foregroundRunning ?? this.foregroundRunning,
-        busy: busy ?? this.busy,
-      );
+  final bool bluetoothOff;
+  final bool locationServicesOff;
 }
 
-/// Owns device timers (node tick, battery polling) and the mesh on/off flow.
+/// Thin UI adapter over [MeshRuntime], which owns the mesh lifecycle outside
+/// the widget tree.
 class DeviceController extends Notifier<DeviceState> {
-  Timer? _tick;
-  Timer? _battery;
-
-  AppServices get _s => ref.read(appServicesProvider);
+  MeshRuntime get _r => ref.read(meshRuntimeProvider);
 
   @override
   DeviceState build() {
-    _tick = Timer.periodic(const Duration(seconds: 5), (_) => unawaited(_s.node.tick()));
-    _battery = Timer.periodic(const Duration(seconds: 60), (_) => unawaited(_readBattery()));
-    unawaited(_readBattery());
-    unawaited(_loadPermissions());
-    ref.onDispose(() {
-      _tick?.cancel();
-      _battery?.cancel();
-    });
-    return const DeviceState();
+    final runtime = ref.watch(meshRuntimeProvider);
+    final sub = runtime.changes.listen((_) => state = DeviceState.of(runtime));
+    ref.onDispose(() => unawaited(sub.cancel()));
+    return DeviceState.of(runtime);
   }
 
-  Future<void> _readBattery() async => _s.node.setRealBattery(await _s.battery.level());
+  Future<void> enableMesh() => _r.enableMesh();
 
-  Future<void> _loadPermissions() async {
-    state = state.copyWith(permissions: await _s.permissions.status());
-  }
+  Future<void> disableMesh() => _r.disableMesh();
 
-  /// Turns the radio mesh on. Permissions are requested here, when the user
-  /// asks for the feature, never silently at first launch.
-  Future<void> enableMesh() async {
-    state = state.copyWith(busy: true);
-    final perms = await _s.permissions.requestMesh();
-    state = state.copyWith(permissions: perms);
-    if (!perms.radioGranted) {
-      state = state.copyWith(busy: false);
-      return;
-    }
-    await _s.node.start();
-    final fg = await _s.foreground.start();
-    state = state.copyWith(meshOn: true, foregroundRunning: fg, busy: false);
-    unawaited(refreshLocation(request: false));
-    await _s.node.tick();
-  }
+  Future<LocationFix?> refreshLocation({bool request = true}) => _r.refreshLocation(request: request);
 
-  Future<void> disableMesh() async {
-    await _s.node.stop();
-    await _s.foreground.stop();
-    state = state.copyWith(meshOn: false, foregroundRunning: false);
-  }
-
-  Future<LocationFix?> refreshLocation({bool request = true}) async {
-    final (fix, status) = await _s.location.currentFix(request: request);
-    _s.node.setSelfLocation(fix ?? state.lastFix);
-    state = state.copyWith(locationStatus: status, lastFix: fix);
-    return fix;
-  }
-
-  Future<void> openSettings() => _s.permissions.openSettings();
+  Future<void> openSettings() => _r.openSettings();
 }
 
 final deviceControllerProvider = NotifierProvider<DeviceController, DeviceState>(DeviceController.new);
