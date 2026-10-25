@@ -23,7 +23,7 @@ class MeshForegroundService : Service() {
         val manager = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             manager.createNotificationChannel(
-                NotificationChannel(CHANNEL_ID, "RESQ mesh relay", NotificationManager.IMPORTANCE_LOW)
+                NotificationChannel(CHANNEL_ID, "RES-Q mesh relay", NotificationManager.IMPORTANCE_LOW)
             )
         }
         val openApp = PendingIntent.getActivity(
@@ -36,9 +36,9 @@ class MeshForegroundService : Service() {
             Notification.Builder(this)
         }
         val notification = builder
-            .setContentTitle("RESQ mesh active")
+            .setContentTitle("RES-Q mesh active")
             .setContentText("Relaying emergency messages to nearby phones")
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_resq)
             .setContentIntent(openApp)
             .setOngoing(true)
             .build()

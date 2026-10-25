@@ -10,9 +10,10 @@ import '../../domain/trust/trust_agent.dart';
 import '../../domain/world.dart';
 import '../../node/views.dart';
 import '../../protocol/limits.dart';
+import '../../ui/icons.dart';
 import '../shared/hazard_dialog.dart';
 import '../shared/mesh_bar.dart';
-import '../shared/status_drawer.dart';
+import '../shared/page.dart';
 import '../shared/widgets.dart';
 
 class ResponderScreen extends ConsumerStatefulWidget {
@@ -38,57 +39,65 @@ class _ResponderScreenState extends ConsumerState<ResponderScreen> {
     final offers = node.myOffers;
     final engagements = node.myEngagements;
     final open = node.openRequests.where((o) => o.assignedTo != node.selfId).toList();
+    final cs = Theme.of(context).colorScheme;
 
-    return Scaffold(
-      appBar: AppBar(title: const Text('RESPONDER')),
-      endDrawer: const StatusDrawer(),
-      body: SafeArea(
-        child: ListView(padding: const EdgeInsets.all(16), children: [
+    return ResqPage(
+      title: 'Respond',
+      subtitle: 'You are only offered requests you are best placed to help with. Nothing moves you without your decision.',
+      children: [
           const MeshBar(),
-          SectionTitle('OFFERS FOR YOU (${offers.length})'),
+          SectionHeader('Matched to you', trailing: offers.isEmpty ? null : StatusChip('${offers.length}', tone: Tone.danger)),
           if (offers.isEmpty)
-            const Text('No request is currently matched to you. You are only offered what you are best placed to do.',
-                style: TextStyle(fontSize: 12)),
-          for (final o in offers) _OfferCard(o),
-          if (engagements.isNotEmpty) const SectionTitle('YOUR ASSIGNMENTS'),
-          for (final e in engagements) _EngagementCard(e),
-          const SectionTitle('MY CAPABILITIES'),
+            const EmptyState(
+              icon: ResqIcons.target,
+              title: 'No request matched to you',
+              body: 'You will only be offered requests you are best placed to help with. Keep RES-Q open and the mesh on.',
+            ),
+          for (final o in offers) Padding(padding: const EdgeInsets.only(bottom: 12), child: _OfferCard(o)),
+          if (engagements.isNotEmpty) const SectionHeader('Your assignments'),
+          for (final e in engagements) Padding(padding: const EdgeInsets.only(bottom: 12), child: _EngagementCard(e)),
+          const SectionHeader('Your skills'),
           _ProfileCard(controller: _profile),
-          SectionTitle('OTHER OPEN REQUESTS (${open.length})'),
-          if (open.isEmpty) const Text('None known.', style: TextStyle(fontSize: 12)),
-          for (final o in open) _OpenRequestCard(o),
+          SectionHeader('Other open requests', trailing: open.isEmpty ? null : Text('${open.length}')),
+          if (open.isEmpty)
+            const EmptyState(icon: ResqIcons.checkCircle, title: 'No other open requests', body: 'Nothing else is waiting nearby.'),
+          for (final o in open) Padding(padding: const EdgeInsets.only(bottom: 8), child: _OpenRequestCard(o)),
           const SizedBox(height: 12),
-          ActionButton('REPORT HAZARD', dense: true, onPressed: () => showHazardDialog(context, ref)),
-        ]),
-      ),
+          OutlinedButton.icon(
+            onPressed: () => showHazardDialog(context, ref),
+            icon: AppIcon(ResqIcons.hazard, size: 18, color: cs.primary),
+            label: const Text('Report a danger nearby'),
+          ),
+      ],
     );
   }
 }
 
-class _ChainTable extends StatelessWidget {
-  const _ChainTable(this.result);
+Widget _needsChips(SosRecord s) => Wrap(spacing: 8, runSpacing: 8, children: [
+      UrgencyChip(s.urgency),
+      if (s.needs.isEmpty) const StatusChip('Need unclear', icon: ResqIcons.help),
+      for (final n in s.needs) StatusChip(needLabel(n), icon: needIcon(n)),
+    ]);
+
+class _ChainDetails extends StatelessWidget {
+  const _ChainDetails(this.result);
 
   final ChainResult result;
 
-  @override
-  Widget build(BuildContext context) => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        for (var i = 0; i < result.stages.length; i++) ...[
-          Text(
-            '${i + 1}. ${result.stages[i].name}  ${i == 4 ? '' : scoreBar(result.stages[i].score)}'
-            '${result.stages[i].passed ? '' : '  ✕ BLOCKED'}',
-            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(left: 16, bottom: 4),
-            child: Text(result.stages[i].reasons.take(4).join(' · '), style: const TextStyle(fontSize: 10)),
-          ),
-        ],
-      ]);
-}
+  static const List<String> _names = ['Claim check', 'Hazard check', 'Trust', 'Distance & battery', 'Dispatch'];
 
-String _sosSummary(SosRecord s, int now) {
-  final needs = s.needs.isEmpty ? 'NEED UNCLEAR' : s.needs.map((n) => n.label).join(' + ');
-  return '${s.urgency.label} · $needs · ${ago(s.claimedAtMs, now)}';
+  @override
+  Widget build(BuildContext context) => Column(children: [
+        for (var i = 0; i < result.stages.length; i++)
+          ScoreRow(
+            index: i + 1,
+            name: _names[i],
+            value: result.stages[i].score,
+            passed: result.stages[i].passed,
+            showBar: i != 4,
+            detail: result.stages[i].reasons.take(3).join(' · ').toLowerCase().replaceAll('_', ' '),
+          ),
+      ]);
 }
 
 class _OfferCard extends ConsumerWidget {
@@ -99,44 +108,80 @@ class _OfferCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ref.read(nodeProvider);
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final a = offer.assignment;
     final s = a.sos;
     final r = a.primaryResult;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Boxed(
-        thick: true,
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(_sosSummary(s, node.nowMs), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-          const SizedBox(height: 6),
-          Text(offer.justification, style: const TextStyle(fontSize: 13)),
-          const Divider(height: 20),
-          KeyValue('REQUEST', s.id.substring(0, 8)),
-          KeyValue('LOCATION', r.claim.locationLabel),
-          KeyValue('VICTIM BATTERY', s.batteryPct == null ? 'UNKNOWN' : '${s.batteryPct}%'),
-          KeyValue('CONTENT', s.readable ? (s.sealed ? 'DECRYPTED FOR YOU' : 'SHARED OPENLY') : 'SEALED — not addressed to you'),
-          if (s.text != null) Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: Text('"${s.text}"')),
-          if (r.claim.suspectedDecoy) const Text('⚠ UNCORROBORATED — POSSIBLE DECOY', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 6),
-          _ChainTable(r),
-          Text(
-            'OFFER WINDOW ${offer.windowRemaining.inSeconds}s — informational. It never accepts for you; '
-            'when it ends the request is offered to the next responder.',
-            style: const TextStyle(fontSize: 10),
-          ),
-          const SizedBox(height: 8),
-          Row(children: [
-            Expanded(
-              child: ActionButton('ACCEPT', primary: true, onPressed: () async {
-                await node.respond(s.id, SosEventKind.accepted);
-                if (context.mounted) notify(context, 'ACCEPTANCE SAVED — SHARING WITH PEERS');
-              }),
-            ),
-            const SizedBox(width: 8),
-            Expanded(child: ActionButton('DECLINE', onPressed: () => node.respond(s.id, SosEventKind.declined))),
+
+    return Card(
+      elevation: 1,
+      color: cs.surfaceContainer,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        Container(height: 4, color: cs.error),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Row(children: [
+              Expanded(child: _needsChips(s)),
+              Text(ago(s.claimedAtMs, node.nowMs), style: t.bodySmall),
+            ]),
+            const SizedBox(height: 12),
+            Text(offer.justification, style: t.bodyLarge),
+            if (s.text != null) ...[
+              const SizedBox(height: 10),
+              Text('"${s.text}"', style: t.bodyMedium?.copyWith(fontStyle: FontStyle.italic)),
+            ],
+            const SizedBox(height: 10),
+            InfoRow(ResqIcons.location, 'Location: ${r.claim.locationLabel.toLowerCase()}'),
+            InfoRow(ResqIcons.battery, s.batteryPct == null ? 'Their battery: unknown' : 'Their battery: ${s.batteryPct}%'),
+            InfoRow(s.sealed ? ResqIcons.lock : ResqIcons.unlock,
+                s.readable ? (s.sealed ? 'Decrypted for you' : 'Shared openly') : 'Details withheld by the requester'),
+            if (r.claim.suspectedDecoy) ...[
+              const SizedBox(height: 8),
+              const Callout('Not confirmed by anyone nearby. This could be a decoy — check before taking risks.',
+                  tone: Tone.danger),
+            ],
           ]),
-        ]),
-      ),
+        ),
+        Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: const EdgeInsets.symmetric(horizontal: 16),
+            childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+            leading: AppIcon(ResqIcons.info, size: 20, color: cs.primary),
+            title: Text('Why you were matched', style: t.labelLarge),
+            children: [_ChainDetails(r)],
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
+          child: InfoRow(ResqIcons.clock,
+              'Offered to the next responder in ${offer.windowRemaining.inSeconds}s if you don\'t answer. It never accepts for you.'),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+          child: Row(children: [
+            Expanded(
+              child: OutlinedButton(
+                onPressed: () => node.respond(s.id, SosEventKind.declined),
+                child: const Text('Decline'),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                onPressed: () async {
+                  await node.respond(s.id, SosEventKind.accepted);
+                  if (context.mounted) notify(context, 'Accepted. The requester has been told.');
+                },
+                icon: AppIcon(ResqIcons.check, size: 18, color: cs.onPrimary),
+                label: const Text('Accept'),
+              ),
+            ),
+          ]),
+        ),
+      ]),
     );
   }
 }
@@ -146,54 +191,83 @@ class _EngagementCard extends ConsumerWidget {
 
   final EngagementView e;
 
+  static String _phase(SosPhase p) => switch (p) {
+        SosPhase.searching => 'Open',
+        SosPhase.accepted => 'Accepted',
+        SosPhase.enRoute => 'On the way',
+        SosPhase.onScene => 'On scene',
+        SosPhase.resolved => 'Resolved',
+        SosPhase.cancelled => 'Cancelled by requester',
+        SosPhase.expired => 'Expired',
+      };
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ref.read(nodeProvider);
+    final t = Theme.of(context).textTheme;
     final s = e.sos;
-    Widget progress(String label, SosEventKind kind) => Expanded(
-          child: ActionButton(label,
-              dense: true,
-              primary: e.myProgress + 1 == kind.progress,
-              onPressed: e.myProgress >= kind.progress ? null : () => node.respond(s.id, kind)),
-        );
     final closed = e.state.phase == SosPhase.resolved || e.state.phase == SosPhase.cancelled;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Boxed(
-        thick: e.isPrimary,
+
+    Widget stepButton(String label, SosEventKind kind) {
+      final done = e.myProgress >= kind.progress;
+      final next = e.myProgress + 1 == kind.progress;
+      final child = Text(label, textAlign: TextAlign.center);
+      if (done) {
+        return FilledButton.tonalIcon(onPressed: null, icon: AppIcon(ResqIcons.check, size: 16), label: child);
+      }
+      return next
+          ? FilledButton(onPressed: () => node.respond(s.id, kind), child: child)
+          : OutlinedButton(onPressed: () => node.respond(s.id, kind), child: child);
+    }
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(_sosSummary(s, node.nowMs), style: const TextStyle(fontWeight: FontWeight.w700)),
-          KeyValue('STATUS', e.state.phase.label),
-          if (e.state.orphaned.contains(node.selfId))
-            const Text('YOUR ASSIGNMENT WAS RELEASED AFTER LOSS OF CONTACT. The request is open again.',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-          if (e.standDown) ...[
-            const Text('STAND DOWN — another responder has precedence for this request.',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-            const SizedBox(height: 6),
-            ActionButton('ACKNOWLEDGE STAND DOWN', dense: true, onPressed: () => node.respond(s.id, SosEventKind.standDown)),
-          ] else if (e.state.conflicts.contains('MULTIPLE_ON_SCENE'))
-            const Text('STATUS CONFLICT — another responder is also on scene. Coordinate in person.',
-                style: TextStyle(fontWeight: FontWeight.w700)),
-          if (s.text != null) Padding(padding: const EdgeInsets.symmetric(vertical: 4), child: Text('"${s.text}"')),
-          if (s.location != null) KeyValue('LOCATION', '${s.location!.point} ±${s.location!.accuracyM.round()} m'),
-          if (!closed && !e.standDown) ...[
+          Row(children: [
+            Expanded(child: _needsChips(s)),
+            StatusChip(_phase(e.state.phase), tone: closed ? Tone.neutral : Tone.info),
+          ]),
+          if (s.text != null) ...[const SizedBox(height: 10), Text('"${s.text}"', style: t.bodyMedium)],
+          if (s.location != null)
+            InfoRow(ResqIcons.location, '${s.location!.point} (±${s.location!.accuracyM.round()} m)', mono: true),
+          if (e.state.orphaned.contains(node.selfId)) ...[
             const SizedBox(height: 8),
+            const Callout('Your assignment was released after loss of contact. The request is open again.', tone: Tone.warn),
+          ],
+          if (e.standDown) ...[
+            const SizedBox(height: 8),
+            const Callout('Another responder has precedence for this request. Please stand down.',
+                title: 'Stand down', tone: Tone.warn),
+            const SizedBox(height: 8),
+            FilledButton.tonal(
+              onPressed: () => node.respond(s.id, SosEventKind.standDown),
+              child: const Text('OK, standing down'),
+            ),
+          ] else if (e.state.conflicts.contains('MULTIPLE_ON_SCENE')) ...[
+            const SizedBox(height: 8),
+            const Callout('Another responder also reports being on scene. Coordinate in person.', tone: Tone.info),
+          ],
+          if (!closed && !e.standDown) ...[
+            const SizedBox(height: 14),
             Row(children: [
-              progress('EN ROUTE', SosEventKind.enRoute),
-              const SizedBox(width: 6),
-              progress('ON SCENE', SosEventKind.onScene),
-              const SizedBox(width: 6),
-              progress('RESOLVED', SosEventKind.resolved),
+              Expanded(child: stepButton('On the way', SosEventKind.enRoute)),
+              const SizedBox(width: 8),
+              Expanded(child: stepButton('On scene', SosEventKind.onScene)),
+              const SizedBox(width: 8),
+              Expanded(child: stepButton('Resolved', SosEventKind.resolved)),
             ]),
             if (e.myProgress < SosEventKind.onScene.progress)
-              Padding(
-                padding: const EdgeInsets.only(top: 6),
-                child: ActionButton('WITHDRAW', dense: true, onPressed: () async {
-                  if (await confirm(context, 'WITHDRAW?', 'The request will be offered to the next responder.')) {
-                    await node.respond(s.id, SosEventKind.standDown, note: 'withdrawn');
-                  }
-                }),
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () async {
+                    if (await confirm(context, 'Withdraw?', 'The request will be offered to the next responder.', yes: 'Withdraw')) {
+                      await node.respond(s.id, SosEventKind.standDown, note: 'withdrawn');
+                    }
+                  },
+                  child: const Text('Withdraw'),
+                ),
               ),
           ],
         ]),
@@ -210,7 +284,7 @@ class _ProfileCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ref.watch(nodeProvider);
-    final trust = node.trustOf(node.selfId);
+    final t = Theme.of(context).textTheme;
     final cred = node.myCredential;
     final status = cred == null
         ? CredentialStatus.none
@@ -219,44 +293,72 @@ class _ProfileCard extends ConsumerWidget {
             : (node.revokedCredentialIds.contains(cred.cid)
                 ? CredentialStatus.revoked
                 : (cred.expiresAtMs <= node.nowMs ? CredentialStatus.expired : CredentialStatus.verified)));
-    return Boxed(
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        TextField(
-          controller: controller,
-          maxLength: Limits.maxProfileTextChars,
-          maxLines: 3,
-          minLines: 1,
-          decoration: const InputDecoration(
-            labelText: 'WHAT CAN YOU DO? (any language)',
-            hintText: 'e.g. nurse · boat hai · tractor · can swim',
+    final verified = status == CredentialStatus.verified;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          TextField(
+            controller: controller,
+            maxLength: Limits.maxProfileTextChars,
+            maxLines: 3,
+            minLines: 1,
+            decoration: const InputDecoration(
+              labelText: 'What can you do?',
+              hintText: 'e.g. nurse, boat hai, tractor, can swim',
+              helperText: 'Any language',
+            ),
+            onSubmitted: node.setProfile,
           ),
-          onSubmitted: node.setProfile,
-        ),
-        ActionButton('SAVE CAPABILITIES', dense: true, onPressed: () {
-          node.setProfile(controller.text);
-          FocusScope.of(context).unfocus();
-        }),
-        const SizedBox(height: 8),
-        Text(
-          node.profile.capabilities.isEmpty
-              ? 'NO CAPABILITIES PARSED YET'
-              : 'PARSED: ${node.profile.capabilities.map((c) => c.label).join(' · ')}',
-          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-        ),
-        if (node.profile.unrecognized)
-          const Text('Not recognised by the rules — kept as GENERAL HELP for human judgement.', style: TextStyle(fontSize: 11)),
-        KeyValue('VERIFICATION', status == CredentialStatus.verified
-            ? 'VERIFIED: ${cred!.roles.map((r) => r.label).join(', ')} by ${cred.issuerName}'
-            : '${status.label}${status == CredentialStatus.none ? ' (claims shown as unverified to others)' : ''}'),
-        KeyValue('TRUST (LOCAL VIEW)', trust.level.name.toUpperCase()),
-        KeyValue('MY FINGERPRINT', PublicIdentity.fingerprintOf(node.selfId)),
-        SwitchListTile(
-          contentPadding: EdgeInsets.zero,
-          value: node.available,
-          onChanged: node.setAvailable,
-          title: Text(node.available ? 'AVAILABLE FOR REQUESTS' : 'NOT AVAILABLE', style: const TextStyle(fontSize: 13)),
-        ),
-      ]),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.tonal(
+              onPressed: () {
+                node.setProfile(controller.text);
+                FocusScope.of(context).unfocus();
+              },
+              child: const Text('Save'),
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (node.profile.capabilities.isEmpty)
+            Text('No skills recognised yet.', style: t.bodySmall)
+          else
+            Wrap(spacing: 8, runSpacing: 8, children: [
+              for (final c in node.profile.capabilities)
+                StatusChip(capabilityLabel(c), icon: capabilityIcon(c), tone: verified && cred!.roles.contains(c) ? Tone.good : Tone.neutral),
+            ]),
+          if (node.profile.unrecognized)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: InfoRow(ResqIcons.info, 'Not recognised automatically — kept as general help for people to judge.'),
+            ),
+          const SizedBox(height: 12),
+          InfoRow(
+            verified ? ResqIcons.shieldCheck : ResqIcons.shield,
+            verified
+                ? 'Verified by ${cred!.issuerName}: ${cred.roles.map(capabilityLabel).join(', ')}'
+                : switch (status) {
+                    CredentialStatus.none => 'Not verified — others see your skills as self-declared',
+                    CredentialStatus.unknownIssuer => 'Credential from an authority this phone does not trust',
+                    CredentialStatus.revoked => 'Your credential was revoked',
+                    CredentialStatus.expired => 'Your credential has expired',
+                    _ => 'Credential could not be verified',
+                  },
+            tone: verified ? Tone.good : null,
+          ),
+          InfoRow(ResqIcons.fingerprint, PublicIdentity.fingerprintOf(node.selfId), mono: true),
+          const Divider(height: 24),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: node.available,
+            onChanged: node.setAvailable,
+            title: const Text('Available for requests'),
+            subtitle: Text(node.available ? 'You can be matched to people nearby' : 'You will not receive offers'),
+          ),
+        ]),
+      ),
     );
   }
 }
@@ -269,32 +371,43 @@ class _OpenRequestCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ref.read(nodeProvider);
+    final t = Theme.of(context).textTheme;
     final mine = o.myResult;
-    final assigned = o.assignedTo == null
-        ? (o.unmatchedReason == 'NO_RESPONDERS_KNOWN' ? 'NO RESPONDERS KNOWN NEARBY' : 'NO ELIGIBLE RESPONDER YET')
-        : 'MATCHED TO ANOTHER RESPONDER (${node.beacons[o.assignedTo]?.name.isNotEmpty == true ? node.beacons[o.assignedTo]!.name : PublicIdentity.fingerprintOf(o.assignedTo!).substring(0, 9)})';
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Boxed(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Text(_sosSummary(o.sos, node.nowMs), style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 12)),
-          Text(assigned, style: const TextStyle(fontSize: 11)),
-          if (o.sos.triage?.needsReview ?? (o.sos.urgency == Urgency.unknown))
-            const Text('NEEDS HUMAN REVIEW', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-          if (mine != null && !mine.eligible)
-            Text('Not offered to you: ${mine.blockingReasons.take(2).join(' · ')}', style: const TextStyle(fontSize: 10)),
-          const SizedBox(height: 6),
-          ActionButton('VOLUNTEER ANYWAY', dense: true, onPressed: () async {
-            final ok = await confirm(
-              context,
-              'VOLUNTEER FOR THIS REQUEST?',
-              o.assignedTo == null
-                  ? 'No responder is matched yet. You will be shown as accepted; check hazards before moving.'
-                  : 'The matcher picked a better-placed responder. If both of you go, reconciliation will ask one to stand down.',
-              yes: 'ACCEPT',
-            );
-            if (ok) await node.respond(o.sos.id, SosEventKind.accepted, note: 'volunteered');
-          }),
+    final String status;
+    if (o.assignedTo == null) {
+      status = o.unmatchedReason == 'NO_RESPONDERS_KNOWN' ? 'No responders known nearby' : 'No suitable responder yet';
+    } else {
+      final name = node.beacons[o.assignedTo]?.name ?? '';
+      status = 'Matched to ${name.isNotEmpty ? name : 'another responder'}';
+    }
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+        child: Row(children: [
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _needsChips(o.sos),
+              const SizedBox(height: 8),
+              Text('$status · ${ago(o.sos.claimedAtMs, node.nowMs)}', style: t.bodySmall),
+              if (mine != null && !mine.eligible)
+                Text('Not offered to you: ${mine.blockingReasons.take(1).join().toLowerCase().replaceAll('_', ' ')}',
+                    style: t.bodySmall),
+            ]),
+          ),
+          TextButton(
+            onPressed: () async {
+              final ok = await confirm(
+                context,
+                'Volunteer for this request?',
+                o.assignedTo == null
+                    ? 'No responder is matched yet. Check for hazards before moving.'
+                    : 'Someone better placed was matched. If you both go, one of you will be asked to stand down.',
+                yes: 'Volunteer',
+              );
+              if (ok) await node.respond(o.sos.id, SosEventKind.accepted, note: 'volunteered');
+            },
+            child: const Text('Volunteer'),
+          ),
         ]),
       ),
     );

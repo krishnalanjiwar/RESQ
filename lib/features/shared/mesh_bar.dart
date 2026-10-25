@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../ui/icons.dart';
 import 'widgets.dart';
 
-/// Radio status strip with the explicit "turn mesh on" action, where the
-/// permission request happens. It reports the radio's real state: user intent
-/// ("on") is never shown as a working radio if the radio isn't running.
+/// Mesh status card: one switch to turn the mesh on (where permissions are
+/// requested), the radio's real state, and anything that blocks it.
 class MeshBar extends ConsumerWidget {
   const MeshBar({super.key});
 
@@ -16,65 +16,88 @@ class MeshBar extends ConsumerWidget {
     final node = ref.watch(nodeProvider);
     final device = ref.watch(deviceControllerProvider);
     final ctrl = ref.read(deviceControllerProvider.notifier);
+    final t = Theme.of(context).textTheme;
     final peers = node.transport.connectedPeers.length;
+    final radioUp = device.meshOn && node.transportRunning;
 
     final problems = <String>[
-      if (device.bluetoothOff) 'BLUETOOTH IS OFF — turn it on to reach nearby phones',
-      if (device.locationServicesOff) 'LOCATION SERVICES OFF — discovery may fail on older Android',
+      if (device.bluetoothOff) 'Bluetooth is off. Turn it on to reach nearby phones.',
+      if (device.locationServicesOff) 'Location services are off. Discovery may fail on older Android.',
       if (node.clockWarning)
-        'THIS PHONE\'S CLOCK DIFFERS FROM NEARBY PHONES BY ${node.clockOffset!.inMinutes.abs()} MIN — set the correct time',
+        'This phone\'s clock differs from nearby phones by ${node.clockOffset!.inMinutes.abs()} min. Set the correct time.',
+      if (device.meshOn && !node.transportRunning) 'The radio is not running: ${node.transportDetail}.',
+      if (device.meshOn && !device.foregroundRunning) 'Background relay is not active. Keep RES-Q open.',
       ...?device.permissions?.warnings,
     ];
 
-    Widget problemList() => Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          for (final p in problems) Text('⚠ $p', style: const TextStyle(fontSize: 11)),
-        ]);
-
+    final String title;
+    final String subtitle;
+    final Tone tone;
     if (!device.meshOn) {
-      return Boxed(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const Text('MESH OFF', style: TextStyle(fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text(
-            device.permissions != null && !device.permissions!.radioGranted
-                ? '${device.permissions!.label}. Bluetooth access is needed to reach other phones without internet.'
-                : 'Turn on to exchange messages with nearby phones over Bluetooth / Wi-Fi. No internet needed.',
-            style: const TextStyle(fontSize: 12),
-          ),
-          if (problems.isNotEmpty) ...[const SizedBox(height: 4), problemList()],
-          const SizedBox(height: 8),
-          ActionButton(device.busy ? 'STARTING…' : 'TURN ON MESH', primary: true, onPressed: device.busy ? null : ctrl.enableMesh),
-          if (device.permissions?.anyPermanentlyDenied ?? false)
-            Padding(
-              padding: const EdgeInsets.only(top: 8),
-              child: ActionButton('OPEN SETTINGS', dense: true, onPressed: ctrl.openSettings),
-            ),
-        ]),
-      );
+      title = 'Mesh is off';
+      subtitle = device.permissions != null && !device.permissions!.radioGranted
+          ? 'Bluetooth access is needed to reach nearby phones without internet.'
+          : 'Turn on to reach nearby phones over Bluetooth and Wi-Fi. No internet needed.';
+      tone = Tone.neutral;
+    } else if (!radioUp) {
+      title = 'Radio not running';
+      subtitle = 'Mesh is switched on but the radio has not started.';
+      tone = Tone.danger;
+    } else {
+      title = peers == 0 ? 'Searching for nearby phones' : 'Connected to $peers nearby phone${peers == 1 ? '' : 's'}';
+      subtitle = peers == 0 ? 'Messages are saved and sent when a phone comes in range.' : 'Messages hop phone to phone.';
+      tone = peers == 0 ? Tone.warn : Tone.good;
     }
 
-    final radioUp = node.transportRunning;
-    final headline = radioUp
-        ? 'MESH ON · $peers PEER${peers == 1 ? '' : 'S'}'
-        : 'MESH ON — RADIO NOT RUNNING (${node.transportDetail})';
-    return Boxed(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      thick: !radioUp || problems.isNotEmpty,
-      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Expanded(
-            child: Text(
-              '$headline'
-              '${device.foregroundRunning ? '' : ' · BACKGROUND DISCOVERY NOT ACTIVE'}'
-              '${node.powerPolicy.isSimulatedOverride ? ' · SIM BATTERY' : ''}',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Row(children: [
+            IconCircle(device.meshOn ? ResqIcons.mesh : ResqIcons.meshOff, tone: tone),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(title, style: t.titleSmall?.copyWith(fontWeight: FontWeight.w600)),
+                const SizedBox(height: 2),
+                Text(subtitle, style: t.bodySmall),
+              ]),
             ),
-          ),
-          if (!radioUp) TextButton(onPressed: ctrl.enableMesh, child: const Text('[ RETRY ]')),
-          TextButton(onPressed: ctrl.disableMesh, child: const Text('[ OFF ]')),
+            if (device.busy)
+              const Padding(
+                padding: EdgeInsets.all(12),
+                child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2.5)),
+              )
+            else
+              Switch(
+                value: device.meshOn,
+                onChanged: (on) => on ? ctrl.enableMesh() : ctrl.disableMesh(),
+              ),
+          ]),
+          if (problems.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            for (final p in problems)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: InfoRow(ResqIcons.warning, p, tone: Tone.danger),
+              ),
+          ],
+          if (device.meshOn && !node.transportRunning || (device.permissions?.anyPermanentlyDenied ?? false))
+            Padding(
+              padding: const EdgeInsets.only(top: 8, right: 8),
+              child: Wrap(spacing: 8, children: [
+                if (device.meshOn && !node.transportRunning)
+                  FilledButton.tonalIcon(
+                    onPressed: ctrl.enableMesh,
+                    icon: AppIcon(ResqIcons.refresh, size: 18),
+                    label: const Text('Retry'),
+                  ),
+                if (device.permissions?.anyPermanentlyDenied ?? false)
+                  OutlinedButton(onPressed: ctrl.openSettings, child: const Text('Open settings')),
+              ]),
+            ),
         ]),
-        if (problems.isNotEmpty) problemList(),
-      ]),
+      ),
     );
   }
 }

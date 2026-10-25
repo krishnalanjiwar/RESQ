@@ -122,11 +122,20 @@ class SimController extends Notifier<SimState> {
   Timer? _auto;
   bool _stepping = false;
 
+  /// Kept outside `state` because Riverpod forbids reading state in onDispose.
+  Simulator? _current;
+
+  @override
+  set state(SimState value) {
+    _current = value.sim;
+    super.state = value;
+  }
+
   @override
   SimState build() {
     ref.onDispose(() {
       _auto?.cancel();
-      unawaited(state.sim?.dispose());
+      unawaited(_current?.dispose());
     });
     return const SimState();
   }

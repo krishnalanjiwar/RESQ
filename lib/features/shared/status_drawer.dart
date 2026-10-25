@@ -6,10 +6,12 @@ import '../../crypto/identity.dart';
 import '../../domain/models.dart';
 import '../../domain/trust/trust_agent.dart';
 import '../../protocol/limits.dart';
+import '../../ui/brand.dart';
+import '../../ui/icons.dart';
 import 'widgets.dart';
 
-/// Global diagnostics/status drawer, available from every primary screen.
-/// Every line reflects live provider state; nothing is hard-coded.
+/// Global status drawer, available from every screen. Every line reflects
+/// live state; nothing is hard-coded.
 class StatusDrawer extends ConsumerWidget {
   const StatusDrawer({super.key});
 
@@ -18,6 +20,8 @@ class StatusDrawer extends ConsumerWidget {
     ref.watch(nodeVersionProvider);
     final node = ref.watch(nodeProvider);
     final device = ref.watch(deviceControllerProvider);
+    final services = ref.read(appServicesProvider);
+    final t = Theme.of(context).textTheme;
     final counts = node.counts;
     final power = node.powerPolicy;
     final report = node.reconciliationReport;
@@ -26,67 +30,96 @@ class StatusDrawer extends ConsumerWidget {
         .where((b) => b.role == NodeRole.responder && trust.credentialStatus(b, node) == CredentialStatus.verified)
         .length;
 
+    Widget group(String title, List<Widget> children) => Padding(
+          padding: const EdgeInsets.only(top: 20),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 6),
+              child: Text(title, style: t.labelLarge?.copyWith(color: Theme.of(context).colorScheme.primary)),
+            ),
+            ...children,
+          ]),
+        );
+
     return Drawer(
-      shape: const RoundedRectangleBorder(),
       child: SafeArea(
-        child: ListView(padding: const EdgeInsets.all(16), children: [
-          const Text('STATUS', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
-          const SizedBox(height: 4),
-          Text('PROTOCOL v${Limits.protocolVersion}', style: const TextStyle(fontSize: 11)),
-          if (ref.read(appServicesProvider).keysRecovered)
-            const Text('⚠ KEYS WERE UNREADABLE AT STARTUP — NEW IDENTITY CREATED, LOCAL DATA RESET',
-                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-          if (node.clockWarning)
-            Text('⚠ CLOCK DIFFERS FROM NEARBY PHONES BY ${node.clockOffset!.inMinutes.abs()} MIN',
-                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
-          const SectionTitle('ROLE'),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final r in NodeRole.values)
-              ActionButton(
-                r == node.role ? '● ${r.label}' : r.label,
-                dense: true,
-                primary: r == node.role,
-                onPressed: r == node.role ? null : () => node.setRole(r),
+        child: ListView(padding: const EdgeInsets.fromLTRB(20, 16, 20, 24), children: [
+          const BrandLockup(markSize: 34),
+          const SizedBox(height: 18),
+          Text('Status', style: t.headlineSmall),
+          Text('Live view of this phone · protocol v${Limits.protocolVersion}', style: t.bodySmall),
+          if (services.keysRecovered) ...[
+            const SizedBox(height: 12),
+            const Callout('Keys were unreadable at startup. A new identity was created and local data was reset.',
+                tone: Tone.danger),
+          ],
+          if (node.clockWarning) ...[
+            const SizedBox(height: 12),
+            Callout('Clock differs from nearby phones by ${node.clockOffset!.inMinutes.abs()} min.', tone: Tone.warn),
+          ],
+          group('Role', [
+            SegmentedButton<NodeRole>(
+              showSelectedIcon: false,
+              segments: const [
+                ButtonSegment(value: NodeRole.victim, label: Text('Help')),
+                ButtonSegment(value: NodeRole.responder, label: Text('Responder')),
+                ButtonSegment(value: NodeRole.diagnostics, label: Text('Test')),
+              ],
+              selected: {?node.role},
+              emptySelectionAllowed: true,
+              onSelectionChanged: (s) {
+                if (s.isNotEmpty) node.setRole(s.first);
+              },
+            ),
+          ]),
+          group('Radio', [
+            InfoRow(ResqIcons.mesh,
+                '${node.transport.isSimulated ? 'Simulated' : 'Real'} radio · ${node.transportRunning ? 'running' : (device.meshOn ? 'not running' : 'off')}'),
+            InfoRow(ResqIcons.peers, '${counts.connectedPeers} phone(s) connected'),
+            InfoRow(ResqIcons.info, 'Last event: ${node.transportDetail}'),
+            InfoRow(ResqIcons.bolt, device.foregroundRunning ? 'Background relay active' : 'Background relay not active'),
+            InfoRow(ResqIcons.bluetooth, device.bluetoothOff ? 'Bluetooth is off' : 'Bluetooth available',
+                tone: device.bluetoothOff ? Tone.danger : null),
+            InfoRow(ResqIcons.shield, device.permissions?.label.toLowerCase().replaceFirst('nearby', 'Nearby') ?? 'Permissions unknown'),
+          ]),
+          group('Power', [
+            InfoRow(ResqIcons.battery, node.realBattery == null ? 'Battery reading unavailable' : 'Battery ${node.realBattery}%'),
+            if (power.isSimulatedOverride)
+              InfoRow(ResqIcons.flask, 'Simulated battery override: ${node.batteryOverride}%', tone: Tone.good),
+            InfoRow(ResqIcons.bolt, power.mode.label.toLowerCase()),
+          ]),
+          group('Messages', [
+            InfoRow(ResqIcons.send, counts.outboxPending == 0
+                ? 'Nothing waiting to send'
+                : '${counts.outboxPending} of your SOS not yet sent to any phone'),
+            InfoRow(ResqIcons.status, '${counts.sosKnown} SOS · ${counts.beaconsKnown} phones · ${counts.hazardsKnown} hazards known'),
+          ]),
+          group('Security', [
+            InfoRow(ResqIcons.fingerprint, PublicIdentity.fingerprintOf(node.selfId), mono: true),
+            InfoRow(ResqIcons.key, 'Identity keys loaded from secure storage'),
+            InfoRow(ResqIcons.lock, 'Local data encrypted (AES, key in secure storage)'),
+            InfoRow(verifiedKeys > 0 ? ResqIcons.lock : ResqIcons.unlock, verifiedKeys > 0
+                ? 'Your SOS details are encrypted to $verifiedKeys verified responder(s)'
+                : 'No verified responders known. SOS details are shared openly or withheld.'),
+            InfoRow(ResqIcons.shieldCheck,
+                '${node.anchors.length} trusted authorities (${node.provisionedAnchors.length} built-in, ${node.pinnedAnchors.length} pinned)'),
+            if (counts.quarantinedLinks + counts.penalisedIdentities > 0)
+              InfoRow(ResqIcons.shieldAlert, '${counts.quarantinedLinks} link(s), ${counts.penalisedIdentities} identity(ies) blocked',
+                  tone: Tone.danger),
+          ]),
+          group('Reconciliation', [
+            InfoRow(ResqIcons.split, report.sosCount == 0
+                ? 'No SOS known'
+                : '${report.conflicts} conflict(s) across ${report.sosCount} SOS · ${report.standDownsIssued} stand-down · ${report.orphansReopened} reopened'),
+          ]),
+          group('Recent events', [
+            for (final e in node.log.entries.take(8))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Text('${ago(e.atMs, node.nowMs)} · ${e.code.toLowerCase().replaceAll('_', ' ')}${e.detail.isEmpty ? '' : ' — ${e.detail}'}',
+                    style: t.bodySmall),
               ),
           ]),
-          const SectionTitle('RADIO'),
-          KeyValue('TRANSPORT', '${node.transport.isSimulated ? 'SIMULATED' : 'REAL'} · ${node.transport.label}'),
-          KeyValue('STATE', node.transportRunning ? 'RUNNING' : (device.meshOn ? 'NOT RUNNING' : 'OFF'), emphasis: true),
-          if (device.bluetoothOff) const KeyValue('BLUETOOTH', 'OFF'),
-          if (device.locationServicesOff) const KeyValue('LOCATION SVC', 'OFF'),
-          KeyValue('LAST EVENT', node.transportDetail),
-          KeyValue('PEERS', '${counts.connectedPeers} connected'),
-          KeyValue('BACKGROUND', device.foregroundRunning ? 'FOREGROUND SERVICE ACTIVE' : 'BACKGROUND DISCOVERY NOT ACTIVE'),
-          KeyValue('PERMISSIONS', device.permissions?.label ?? 'UNKNOWN'),
-          if (device.permissions?.anyPermanentlyDenied ?? false)
-            ActionButton('OPEN SETTINGS', dense: true, onPressed: () => ref.read(deviceControllerProvider.notifier).openSettings()),
-          const SectionTitle('POWER'),
-          KeyValue('BATTERY (REAL)', node.realBattery == null ? 'BATTERY READING UNAVAILABLE' : '${node.realBattery}%'),
-          if (power.isSimulatedOverride) KeyValue('OVERRIDE', 'SIMULATED BATTERY OVERRIDE ${node.batteryOverride}%', emphasis: true),
-          KeyValue('POLICY', power.mode.label),
-          const SectionTitle('QUEUES'),
-          KeyValue('OUTBOX', '${counts.outboxPending} own SOS not yet sent to any peer'),
-          KeyValue('LIVE MESSAGES', '${counts.liveMessages}'),
-          KeyValue('KNOWN', '${counts.sosKnown} SOS · ${counts.beaconsKnown} nodes · ${counts.hazardsKnown} hazards'),
-          KeyValue('DEDUPE CACHE', '${counts.seenCacheSize} ids'),
-          const SectionTitle('SECURITY'),
-          KeyValue('IDENTITY KEYS', 'LOADED · Ed25519 + X25519 · ${node.identity.public.signKey.substring(0, 8)}…'),
-          const KeyValue('LOCAL DATA', 'AES-encrypted · key in OS secure storage'),
-          KeyValue('FINGERPRINT', PublicIdentity.fingerprintOf(node.selfId)),
-          KeyValue('ENCRYPTION', verifiedKeys > 0
-              ? 'SOS SEALED TO $verifiedKeys VERIFIED RESPONDER KEY(S)'
-              : 'NO VERIFIED RESPONDER KEYS — SOS DETAILS SHARED OPENLY OR WITHHELD'),
-          KeyValue('TRUST ANCHORS', '${node.anchors.length} (${node.provisionedAnchors.length} provisioned, ${node.pinnedAnchors.length} pinned)'),
-          KeyValue('QUARANTINE', '${counts.quarantinedLinks} link(s) · ${counts.penalisedIdentities} identit(ies)'),
-          const SectionTitle('RECONCILIATION'),
-          KeyValue('RESULT', report.sosCount == 0
-              ? 'NO SOS KNOWN'
-              : '${report.conflicts} conflict(s) computed over ${report.sosCount} SOS'),
-          KeyValue('DETAIL', '${report.standDownsIssued} stand-down · ${report.orphansReopened} reopened · ${report.multipleOnScene} multi-on-scene'),
-          const SectionTitle('EVENT LOG (REDACTED)'),
-          for (final e in node.log.entries.take(10))
-            Text('${ago(e.atMs, node.nowMs).padRight(9)} ${e.code}${e.detail.isEmpty ? '' : ' · ${e.detail}'}',
-                style: const TextStyle(fontSize: 10)),
         ]),
       ),
     );

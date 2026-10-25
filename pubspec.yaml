@@ -1,9 +1,9 @@
-name: resq
+﻿name: resq
 description: "Offline-first, decentralized emergency mesh that matches victims to responders over peer-to-peer radio."
 publish_to: 'none'
 
 # versionName follows 0.<phase>.0; versionCode increments every phase gate.
-version: 0.8.0+2
+version: 0.10.0+4
 
 environment:
   sdk: ^3.9.0
@@ -15,6 +15,7 @@ dependencies:
     sdk: flutter
   flutter_riverpod: ^3.4.3
   flutter_secure_storage: ^11.2.0
+  flutter_svg: ^2.3.0
   geolocator: ^14.1.2
   hive_ce: ^2.22.0
   hive_ce_flutter: ^2.5.0
@@ -31,6 +32,9 @@ flutter:
   assets:
     - assets/trust_anchors.json
   fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-VariableFont_opsz_wght.ttf
     - family: RobotoMono
       fonts:
         - asset: assets/fonts/RobotoMono-VariableFont_wght.ttf

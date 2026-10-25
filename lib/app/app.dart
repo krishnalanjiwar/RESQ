@@ -7,6 +7,7 @@ import '../features/responder/responder_screen.dart';
 import '../features/role_selection/role_selection_screen.dart';
 import '../features/victim/victim_screen.dart';
 import 'providers.dart';
+import '../ui/brand.dart';
 import 'theme.dart';
 
 class ResqApp extends StatelessWidget {
@@ -14,9 +15,11 @@ class ResqApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'RESQ',
+        title: 'RES-Q',
         debugShowCheckedModeBanner: false,
-        theme: ResqTheme.monochrome,
+        theme: ResqTheme.light,
+        darkTheme: ResqTheme.dark,
+        themeMode: ThemeMode.system,
         home: const _RoleRouter(),
       );
 }
@@ -49,13 +52,16 @@ class StartupErrorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) => MaterialApp(
         debugShowCheckedModeBanner: false,
-        theme: ResqTheme.monochrome,
+        theme: ResqTheme.light,
+        darkTheme: ResqTheme.dark,
         home: Scaffold(
           body: SafeArea(
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                const Text('RESQ COULD NOT START', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700)),
+                const BrandLockup(markSize: 40),
+                const SizedBox(height: 24),
+                const Text('RES-Q could not start', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w700)),
                 const SizedBox(height: 12),
                 Text(message),
                 const SizedBox(height: 12),

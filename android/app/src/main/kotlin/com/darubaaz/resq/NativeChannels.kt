@@ -44,7 +44,7 @@ object NativeChannels {
             when (call.method) {
                 "notify" -> {
                     val id = call.argument<Int>("id") ?: 0
-                    val title = call.argument<String>("title") ?: "RESQ"
+                    val title = call.argument<String>("title") ?: "RES-Q"
                     val body = call.argument<String>("body") ?: ""
                     result.success(showAlert(app, id, title, body))
                 }
@@ -57,7 +57,7 @@ object NativeChannels {
     private fun showAlert(context: Context, id: Int, title: String, body: String): Boolean = try {
         val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(ALERT_CHANNEL_ID, "RESQ emergency alerts", NotificationManager.IMPORTANCE_HIGH)
+            val channel = NotificationChannel(ALERT_CHANNEL_ID, "RES-Q emergency alerts", NotificationManager.IMPORTANCE_HIGH)
             channel.enableVibration(true)
             manager.createNotificationChannel(channel)
         }
@@ -75,7 +75,8 @@ object NativeChannels {
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(Notification.BigTextStyle().bigText(body))
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(R.drawable.ic_stat_resq)
+            .setColor(0xFF1A73E8.toInt())
             .setContentIntent(open)
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_ALARM)

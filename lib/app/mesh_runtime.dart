@@ -165,7 +165,7 @@ class MeshRuntime {
         SosPhase.searching => 'Responder lost contact. Searching for another responder.',
         _ => null,
       };
-      if (text != null) unawaited(alerts.notify(_alertId(m.sos.id, 2), 'RESQ — ${now.label}', text));
+      if (text != null) unawaited(alerts.notify(_alertId(m.sos.id, 2), 'RES-Q — ${now.label}', text));
     }
     for (final e in node.myEngagements) {
       if (e.standDown && _alertedStandDowns.add(e.sos.id)) {

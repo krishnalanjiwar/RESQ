@@ -1,10 +1,19 @@
-# RESQ
+<p align="center">
+  <img src="assets/brand/resq_icon_192.png" width="96" alt="RES-Q logo: a location pin broadcasting radio waves">
+</p>
 
-RESQ is an offline-first, decentralized emergency response and rescue communications system designed to operate in disaster zones and communication-denied environments where cellular networks and power grids are compromised.
+<h1 align="center">RES-Q</h1>
+<p align="center"><b>Emergency help, even when the network is down.</b><br>Help travels phone to phone: no towers, no internet, no central server.</p>
 
-> **Status:** Phases 1–8 **implemented, not yet verified** (owner-deferred testing). Read [docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md) before trusting any claim. Plan and gates: [docs/MVP_PHASES.md](docs/MVP_PHASES.md).
+---
 
-RESQ is an auxiliary coordination tool. It does not replace emergency services and cannot guarantee delivery or rescue.
+RES-Q is an offline-first, decentralized emergency response system for disaster zones where cellular networks and power are down.
+
+> **Status:** Implemented and verified by automated tests (static analysis clean, 71 tests passing). Physical-device testing is pending. Read [docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md) before trusting any claim. Plan and gates: [docs/MVP_PHASES.md](docs/MVP_PHASES.md).
+
+RES-Q is an auxiliary coordination tool. It does not replace emergency services and cannot guarantee delivery or rescue.
+
+**Brand:** the mark is a location pin with a coral beacon, broadcasting radio waves: *my location, shared with nearby phones*. Brand source is in `lib/ui/brand.dart`; icons are rendered by `scripts/brand/render_icons.py`.
 
 ## What it does
 
