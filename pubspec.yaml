@@ -3,7 +3,7 @@ description: "Offline-first, decentralized emergency mesh that matches victims t
 publish_to: 'none'
 
 # versionName follows 0.<phase>.0; versionCode increments every phase gate.
-version: 0.10.0+4
+version: 0.11.0+5
 
 environment:
   sdk: ^3.9.0

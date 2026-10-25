@@ -104,7 +104,10 @@ class _Hero extends StatelessWidget {
             child: const BrandMark(size: 46),
           ),
           const SizedBox(width: 14),
-          const Wordmark(fontSize: 30, onDark: true),
+          // Scales down on narrow phones / large text instead of overflowing.
+          const Flexible(
+            child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: Wordmark(fontSize: 30, onDark: true)),
+          ),
         ]),
         const SizedBox(height: 22),
         Text('Emergency help,\neven when the network is down.',
@@ -140,7 +143,11 @@ class _HeroPill extends StatelessWidget {
         child: Row(mainAxisSize: MainAxisSize.min, children: [
           AppIcon(icon, size: 14, color: Colors.white),
           const SizedBox(width: 6),
-          Text(label, style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.white)),
+          Flexible(
+            child: Text(label,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(color: Colors.white)),
+          ),
         ]),
       );
 }

@@ -346,6 +346,15 @@ class ResqNode implements WorldView {
     _changed();
   }
 
+  /// Back to the welcome screen. Stored SOS, events and identity are kept;
+  /// this phone simply stops announcing a role until one is chosen again.
+  Future<void> clearRole() async {
+    _role = null;
+    await store.deleteMeta('role');
+    _invalidate();
+    _changed();
+  }
+
   Future<void> setDisplayName(String name) async {
     _displayName = name.trim().length > 40 ? name.trim().substring(0, 40) : name.trim();
     await store.putMeta('name', _displayName);

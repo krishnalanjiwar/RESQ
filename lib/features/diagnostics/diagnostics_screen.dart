@@ -8,6 +8,7 @@ import '../../domain/world.dart';
 import '../../sim/simulator.dart';
 import '../../ui/brand.dart';
 import '../../ui/icons.dart';
+import '../shared/back_to_start.dart';
 import '../shared/mesh_bar.dart';
 import '../shared/status_drawer.dart';
 import '../shared/widgets.dart';
@@ -17,14 +18,18 @@ class DiagnosticsScreen extends StatelessWidget {
   const DiagnosticsScreen({super.key});
 
   @override
-  Widget build(BuildContext context) => DefaultTabController(
+  Widget build(BuildContext context) => BackToStartScope(
+        builder: (context, scaffoldKey) => DefaultTabController(
         length: 3,
         child: Scaffold(
+          key: scaffoldKey,
           appBar: AppBar(
-            leading: const Padding(padding: EdgeInsets.all(12), child: BrandMark(size: 32)),
-            leadingWidth: 56,
+            leading: const BackToStartButton(),
             title: const Text('Test & train'),
-            actions: const [StatusButton()],
+            actions: const [
+              Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: BrandMark(size: 28)),
+              StatusButton(),
+            ],
             bottom: TabBar(tabs: [
               Tab(icon: AppIcon(ResqIcons.map, size: 20), text: 'Simulator'),
               Tab(icon: AppIcon(ResqIcons.mesh, size: 20), text: 'This phone'),
@@ -33,6 +38,7 @@ class DiagnosticsScreen extends StatelessWidget {
           ),
           endDrawer: const StatusDrawer(),
           body: const TabBarView(children: [_SimulatorTab(), _DeviceTab(), _TrustTab()]),
+        ),
         ),
       );
 }

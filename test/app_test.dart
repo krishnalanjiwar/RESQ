@@ -146,4 +146,86 @@ void main() {
     await tester.scrollUntilVisible(find.text('Security'), 300, scrollable: find.byType(Scrollable).last);
     expect(find.text('Security'), findsOneWidget);
   });
+
+  group('navigation back to the welcome screen', () {
+    for (final role in NodeRole.values) {
+      testWidgets('back arrow on ${role.name} returns to welcome', (tester) async {
+        await _node.setRole(role);
+        await _pumpApp(tester);
+        await tester.tap(find.byTooltip('Back'));
+        await _settle(tester);
+        expect(_node.role, isNull);
+        expect(find.text('Works offline'), findsOneWidget);
+      });
+
+      testWidgets('Android back on ${role.name} returns to welcome instead of closing', (tester) async {
+        await _node.setRole(role);
+        await _pumpApp(tester);
+        await tester.binding.handlePopRoute();
+        await _settle(tester);
+        expect(_node.role, isNull);
+        expect(find.text('Works offline'), findsOneWidget);
+      });
+    }
+  });
+
+  testWidgets('Android back with the status drawer open closes the drawer only', (tester) async {
+    await _node.setRole(NodeRole.victim);
+    await _pumpApp(tester);
+    await tester.tap(find.byTooltip('Status'));
+    await _settle(tester);
+    expect(find.byType(Drawer), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    expect(find.byType(Drawer), findsNothing);
+    expect(_node.role, NodeRole.victim, reason: 'closing the drawer must not leave the screen');
+  });
+
+  group('stress: dark mode, 130% text, narrow 320 dp phone', () {
+    Future<void> stressPump(WidgetTester tester) async {
+      tester.view.physicalSize = const Size(960, 1920); // 320 x 640 dp
+      tester.view.devicePixelRatio = 3;
+      tester.platformDispatcher.textScaleFactorTestValue = 1.3;
+      tester.platformDispatcher.platformBrightnessTestValue = Brightness.dark;
+      addTearDown(tester.view.reset);
+      addTearDown(tester.platformDispatcher.clearAllTestValues);
+      await tester.pumpWidget(ProviderScope(
+        overrides: [appServicesProvider.overrideWithValue(_services)],
+        child: const ResqApp(),
+      ));
+      await _settle(tester);
+    }
+
+    Future<void> scrollThrough(WidgetTester tester) async {
+      for (var i = 0; i < 12; i++) {
+        await tester.drag(find.byType(Scrollable).first, const Offset(0, -350));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    }
+
+    testWidgets('welcome screen lays out', (tester) async {
+      await _node.clearRole();
+      await stressPump(tester);
+      await scrollThrough(tester);
+    });
+
+    for (final role in NodeRole.values) {
+      testWidgets('${role.name} screen lays out', (tester) async {
+        await _node.setRole(role);
+        await stressPump(tester);
+        await scrollThrough(tester);
+      });
+    }
+
+    testWidgets('status drawer lays out', (tester) async {
+      await _node.setRole(NodeRole.responder);
+      await stressPump(tester);
+      await tester.tap(find.byTooltip('Status'));
+      await _settle(tester);
+      for (var i = 0; i < 10; i++) {
+        await tester.drag(find.byType(Scrollable).last, const Offset(0, -350));
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+    });
+  });
 }

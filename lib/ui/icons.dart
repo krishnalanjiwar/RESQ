@@ -62,6 +62,7 @@ abstract final class ResqIcons {
   // ---- Actions & navigation ----
   static const String send = '$_o' '<path d="M21 3L10 14"/><path d="M21 3l-7 18-4-7-7-4z"/>' '$_c';
   static const String chevronRight = '$_o' '<path d="M9 5l7 7-7 7"/>' '$_c';
+  static const String arrowBack = '$_o' '<path d="M20 12H4"/><path d="M10 6l-6 6 6 6"/>' '$_c';
   static const String refresh = '$_o' '<path d="M20 11a8 8 0 0 0-14.9-3.5M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.9 3.5M20 20v-4h-4"/>' '$_c';
   static const String play = '$_o' '<path d="M7 4.5v15L19 12z"/>' '$_c';
   static const String pause = '$_o' '<path d="M8 5v14M16 5v14"/>' '$_c';

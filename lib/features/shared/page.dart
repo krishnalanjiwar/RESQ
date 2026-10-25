@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../app/theme.dart';
 import '../../ui/brand.dart';
+import 'back_to_start.dart';
 import 'status_drawer.dart';
 import 'widgets.dart';
 
@@ -19,14 +20,19 @@ class ResqPage extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
-    return Scaffold(
+    return BackToStartScope(
+      builder: (context, scaffoldKey) => Scaffold(
+      key: scaffoldKey,
       endDrawer: const StatusDrawer(),
       body: CustomScrollView(slivers: [
         SliverAppBar.large(
-          leading: const Padding(padding: EdgeInsets.all(12), child: BrandMark(size: 32)),
-          leadingWidth: 56,
+          leading: const BackToStartButton(),
           title: Text(title),
-          actions: const [StatusButton(), SizedBox(width: 4)],
+          actions: const [
+            Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: BrandMark(size: 28)),
+            StatusButton(),
+            SizedBox(width: 4),
+          ],
         ),
         SliverToBoxAdapter(
           child: _Constrained(
@@ -41,6 +47,7 @@ class ResqPage extends StatelessWidget {
           sliver: SliverList.list(children: [for (final c in children) _Constrained(child: c)]),
         ),
       ]),
+      ),
     );
   }
 }
