@@ -8,6 +8,7 @@ class HiveStorageService {
   static const String sosBoxName = 'resq_sos_alerts';
   static const String nodesBoxName = 'resq_mesh_nodes';
   static const String outboxBoxName = 'resq_offline_outbox';
+  static const String configBoxName = 'resq_config';
 
   static Future<void> init() async {
     try {
@@ -18,6 +19,7 @@ class HiveStorageService {
       await Hive.openBox<Map>(sosBoxName);
       await Hive.openBox<Map>(nodesBoxName);
       await Hive.openBox<Map>(outboxBoxName);
+      await Hive.openBox<String>(configBoxName);
 
       AppLogger.info('Hive CE database boxes successfully initialized.');
     } catch (e, stack) {
@@ -54,16 +56,66 @@ class HiveStorageService {
   }
 
   // --- Offline Outbox Operations (Store & Forward) ---
+  // Bitchat spec: 24h TTL, max 8 delivery attempts
+  static const Duration outboxTtl = Duration(hours: 24);
+  static const int maxRetries = 8;
   static Box<Map> get _outboxBox => Hive.box<Map>(outboxBoxName);
 
+  /// Queues a packet for later delivery with TTL and retry metadata
   static Future<void> queueOutgoingPacket(String id, Map<String, dynamic> packet) async {
-    await _outboxBox.put(id, packet);
+    final envelope = {
+      'packet': packet,
+      'queuedAt': DateTime.now().millisecondsSinceEpoch,
+      'retryCount': 0,
+    };
+    await _outboxBox.put(id, envelope);
+    AppLogger.info('Queued outbox packet: $id');
   }
 
+  /// Returns queued packets that are still within TTL and under retry budget.
+  /// Auto-purges expired or exhausted entries.
   static List<Map<String, dynamic>> getQueuedPackets() {
-    return _outboxBox.values
-        .map((e) => Map<String, dynamic>.from(e))
-        .toList();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final validPackets = <Map<String, dynamic>>[];
+    final keysToRemove = <dynamic>[];
+
+    for (final key in _outboxBox.keys) {
+      final raw = _outboxBox.get(key);
+      if (raw == null) continue;
+      final envelope = Map<String, dynamic>.from(raw);
+
+      final queuedAt = envelope['queuedAt'] as int? ?? 0;
+      final retryCount = envelope['retryCount'] as int? ?? 0;
+      final age = Duration(milliseconds: now - queuedAt);
+
+      if (age > outboxTtl || retryCount >= maxRetries) {
+        keysToRemove.add(key);
+        AppLogger.info('Purging stale outbox entry: $key (age: ${age.inMinutes}m, retries: $retryCount)');
+        continue;
+      }
+
+      // Return the inner packet data for sending
+      final packet = envelope['packet'];
+      if (packet is Map) {
+        validPackets.add(Map<String, dynamic>.from(packet));
+      }
+    }
+
+    // Purge expired entries
+    for (final key in keysToRemove) {
+      _outboxBox.delete(key);
+    }
+
+    return validPackets;
+  }
+
+  /// Increments the retry counter for a queued packet
+  static Future<void> incrementRetry(String id) async {
+    final raw = _outboxBox.get(id);
+    if (raw == null) return;
+    final envelope = Map<String, dynamic>.from(raw);
+    envelope['retryCount'] = ((envelope['retryCount'] as int?) ?? 0) + 1;
+    await _outboxBox.put(id, envelope);
   }
 
   static Future<void> removeFromOutbox(String id) async {

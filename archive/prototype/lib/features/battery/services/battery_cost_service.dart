@@ -15,15 +15,9 @@ class BatteryCostService {
     }
   }
 
-  /// Calculates dynamic routing cost based on battery level.
-  /// Higher cost = less preferred for relaying packets.
-  /// Battery > 80%: Cost 1.0 (Ideal relay)
-  /// Battery 50-80%: Cost 2.0 (Normal relay)
-  /// Battery 20-50%: Cost 5.0 (Conserve energy)
-  /// Battery < 20%: Cost 10.0+ (Critical: do not relay unless destination)
-  Future<double> calculateRoutingCost() async {
-    final level = await getBatteryLevel();
-
+  /// Pure function: calculates routing cost for a given battery level.
+  /// Extracted for testability without async Battery plugin dependency.
+  static double costForLevel(int level) {
     if (level >= 80) {
       return 1.0;
     } else if (level >= 50) {
@@ -33,6 +27,13 @@ class BatteryCostService {
     } else {
       return 15.0; // High routing penalty to conserve battery for survival
     }
+  }
+
+  /// Calculates dynamic routing cost based on current battery level.
+  /// Higher cost = less preferred for relaying packets.
+  Future<double> calculateRoutingCost() async {
+    final level = await getBatteryLevel();
+    return costForLevel(level);
   }
 
   /// Stream of battery state changes (charging, discharging, full)

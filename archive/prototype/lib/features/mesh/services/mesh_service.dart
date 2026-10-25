@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:collection';
+import 'dart:math';
 import 'package:flutter_nearby_connections_plus/flutter_nearby_connections_plus.dart';
 import '../../../core/network/packet_protocol.dart';
 import '../../../core/utils/app_logger.dart';
@@ -16,8 +18,13 @@ class MeshService {
   final Map<String, PeerDevice> _peers = {};
   final List<Device> _connectedDevices = [];
 
-  // Deduplication cache (Bitchat inspired seen-set)
-  final Set<String> _seenPacketIds = {};
+  // Deduplication LRU cache (Bitchat spec: 1000 items, 5-min TTL)
+  static const int _maxSeenEntries = 1000;
+  static const Duration _seenTtl = Duration(minutes: 5);
+  final LinkedHashMap<String, DateTime> _seenPacketIds = LinkedHashMap();
+
+  // Relay jitter RNG (Bitchat spec: 10-220ms random delay)
+  final Random _jitterRng = Random();
 
   // Stream controllers
   final _peerStreamController = StreamController<List<PeerDevice>>.broadcast();
@@ -101,7 +108,7 @@ class MeshService {
 
   /// Broadcasts a packet across all connected peers in the mesh
   Future<void> broadcastPacket(MeshPacket packet) async {
-    _seenPacketIds.add(packet.id);
+    _markSeen(packet.id);
     final jsonStr = packet.toJson();
 
     for (var device in _connectedDevices) {
@@ -139,16 +146,36 @@ class MeshService {
   }
 
   /// Handles incoming packet with deduplication and multi-hop TTL relaying
+  /// Checks if a packet ID has been seen within the TTL window
+  bool _hasSeen(String packetId) {
+    final timestamp = _seenPacketIds[packetId];
+    if (timestamp == null) return false;
+    if (DateTime.now().difference(timestamp) > _seenTtl) {
+      _seenPacketIds.remove(packetId);
+      return false;
+    }
+    return true;
+  }
+
+  /// Marks a packet ID as seen, evicting oldest entries if over capacity
+  void _markSeen(String packetId) {
+    _seenPacketIds[packetId] = DateTime.now();
+    // Evict oldest entries if LRU exceeds capacity
+    while (_seenPacketIds.length > _maxSeenEntries) {
+      _seenPacketIds.remove(_seenPacketIds.keys.first);
+    }
+  }
+
   void _handleIncomingPayload(String rawMessage, String fromDeviceId) {
     try {
       final packet = MeshPacket.fromJson(rawMessage);
 
-      // Deduplication: drop if seen recently
-      if (_seenPacketIds.contains(packet.id)) {
+      // Deduplication: drop if seen recently (LRU + TTL)
+      if (_hasSeen(packet.id)) {
         AppLogger.mesh('Dropped duplicate packet: ${packet.id}');
         return;
       }
-      _seenPacketIds.add(packet.id);
+      _markSeen(packet.id);
 
       AppLogger.mesh('Received packet ${packet.id} (Type: ${packet.type.name}, TTL: ${packet.ttl}, Hops: ${packet.hops})');
       _packetStreamController.add(packet);
@@ -159,15 +186,19 @@ class MeshService {
         _sosStreamController.add(sos);
       }
 
-      // Multi-hop Forwarding: If TTL > 1, decay TTL and relay to other connected links!
+      // Multi-hop Forwarding: If TTL > 1, decay TTL and relay with jitter
       if (packet.ttl > 1) {
         final relayedPacket = packet.copyWithDecayedTtl();
         final relayedJson = relayedPacket.toJson();
 
         for (var device in _connectedDevices) {
           if (device.deviceId != fromDeviceId) { // Split horizon: don't reflect back
-            _nearby.sendMessage(device.deviceId, relayedJson);
-            AppLogger.mesh('Relayed multi-hop packet ${relayedPacket.id} to ${device.deviceName} (Remaining TTL: ${relayedPacket.ttl})');
+            // Random relay jitter (10-220ms) to prevent broadcast storms
+            final jitterMs = 10 + _jitterRng.nextInt(211);
+            Future.delayed(Duration(milliseconds: jitterMs), () {
+              _nearby.sendMessage(device.deviceId, relayedJson);
+              AppLogger.mesh('Relayed packet ${relayedPacket.id} to ${device.deviceName} (TTL: ${relayedPacket.ttl}, jitter: ${jitterMs}ms)');
+            });
           }
         }
       }
