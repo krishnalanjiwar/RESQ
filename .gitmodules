@@ -1,0 +1,9 @@
+[submodule "tools/get-shit-done"]
+	path = tools/get-shit-done
+	url = https://github.com/gsd-build/get-shit-done
+[submodule "tools/everything-claude-code"]
+	path = tools/everything-claude-code
+	url = https://github.com/WorldFlowAI/everything-claude-code.git
+[submodule "tools/bitchat"]
+	path = tools/bitchat
+	url = https://github.com/permissionlesstech/bitchat
