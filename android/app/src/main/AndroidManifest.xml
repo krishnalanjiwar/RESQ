@@ -1,17 +1,26 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- Nearby Connections & Bluetooth Permissions -->
+    <!-- Phase 3 permission set, derived from Google Nearby Connections requirements
+         (nearby_connections 4.3.0 merges the same set) and ADR-005. -->
+
+    <!-- Nearby Connections: legacy Bluetooth (Android 11 and below). -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
+    <!-- Nearby Connections: Wi-Fi state for Wi-Fi Direct / hotspot upgrades. -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <!-- Nearby discovery on Android 11 and below requires location; also used for opt-in SOS location. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
-    
-    <!-- Android 12+ (API 31+) Permissions -->
-    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
+    <!-- Android 12+ Bluetooth runtime permissions. -->
+    <uses-permission android:name="android.permission.BLUETOOTH_SCAN" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADVERTISE" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" android:usesPermissionFlags="neverForLocation" />
+    <!-- Android 13+ Wi-Fi peer discovery. -->
+    <uses-permission android:name="android.permission.NEARBY_WIFI_DEVICES" />
+    <!-- Foreground service so relaying continues with the screen off (Android 14 typed FGS). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:label="RESQ"
@@ -35,6 +44,10 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <service
+            android:name=".MeshForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />

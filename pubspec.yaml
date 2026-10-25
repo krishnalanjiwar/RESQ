@@ -1,46 +1,36 @@
 name: resq
-description: "Offline-first, decentralized emergency response and rescue mesh system."
+description: "Offline-first, decentralized emergency mesh that matches victims to responders over peer-to-peer radio."
 publish_to: 'none'
 
-version: 1.0.0+1
+# versionName follows 0.<phase>.0; versionCode increments every phase gate.
+version: 0.8.0+2
 
 environment:
-  sdk: '>=3.4.0 <4.0.0'
+  sdk: ^3.9.0
 
 dependencies:
+  battery_plus: ^7.1.2
+  cryptography: ^2.9.0
   flutter:
     sdk: flutter
-
-  # 1. State Management
   flutter_riverpod: ^3.4.3
-
-  # 2. Local Database & Storage
-  hive_ce: ^2.4.0
-  hive_ce_flutter: ^2.4.0
-  path_provider: ^2.1.6
-
-  # 3. P2P Mesh Networking (The "Radio")
-  flutter_nearby_connections_plus: ^1.2.2
-
-  # 4. On-Device AI (The "Brain")
-  flutter_edge_ai: ^2.5.0
-  flutter_edge_ai_litertlm: ^1.9.0
-
-  # 5. UI, Permissions & Utilities
-  flutter_animate: ^4.5.2
+  flutter_secure_storage: ^11.2.0
+  geolocator: ^14.1.2
+  hive_ce: ^2.22.0
+  hive_ce_flutter: ^2.5.0
+  nearby_connections: ^4.3.0
   permission_handler: ^13.0.2
-  battery_plus: ^7.1.2
-  uuid: ^4.6.0
-  logger: ^2.8.0
-  cupertino_icons: ^1.0.8
 
 dev_dependencies:
+  flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter
-  flutter_lints: ^6.0.0
 
 flutter:
   uses-material-design: true
   assets:
-    - assets/models/
-    - assets/icons/
+    - assets/trust_anchors.json
+  fonts:
+    - family: RobotoMono
+      fonts:
+        - asset: assets/fonts/RobotoMono-VariableFont_wght.ttf

@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Phase-gate APK outputs
+/dist/
+
+# Release signing material must never be committed
+*.jks
+*.keystore
+/android/key.properties

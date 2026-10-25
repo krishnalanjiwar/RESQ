@@ -1,0 +1,5 @@
+{
+  "version": 1,
+  "note": "Pre-provisioned trust anchors (public Ed25519 keys of issuing authorities, base64url). Empty by default: a real deployment provisions keys from hospitals / NDRF / NGOs at build time. Users can also pin an authority in person in Diagnostics > TRUST after comparing fingerprints.",
+  "anchors": []
+}
