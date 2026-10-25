@@ -1,0 +1,46 @@
+name: resq
+description: "Offline-first, decentralized emergency response and rescue mesh system."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.4.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # 1. State Management
+  flutter_riverpod: ^3.4.3
+
+  # 2. Local Database & Storage
+  hive_ce: ^2.4.0
+  hive_ce_flutter: ^2.4.0
+  path_provider: ^2.1.6
+
+  # 3. P2P Mesh Networking (The "Radio")
+  flutter_nearby_connections_plus: ^1.2.2
+
+  # 4. On-Device AI (The "Brain")
+  flutter_edge_ai: ^2.5.0
+  flutter_edge_ai_litertlm: ^1.9.0
+
+  # 5. UI, Permissions & Utilities
+  flutter_animate: ^4.5.2
+  permission_handler: ^13.0.2
+  battery_plus: ^7.1.2
+  uuid: ^4.6.0
+  logger: ^2.8.0
+  cupertino_icons: ^1.0.8
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/models/
+    - assets/icons/
