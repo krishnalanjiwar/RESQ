@@ -9,7 +9,7 @@
 
 RES-Q is an offline-first, decentralized emergency response system for disaster zones where cellular networks and power are down.
 
-> **Status:** Implemented and verified by automated tests (static analysis clean, 71 tests passing). Physical-device testing is pending. Read [docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md) before trusting any claim. Plan and gates: [docs/MVP_PHASES.md](docs/MVP_PHASES.md).
+> **Status (v0.13.1):** Implemented and verified by automated tests (static analysis clean, 95 tests passing). Physical-device testing is pending. New here? Start with **[docs/RESQ_GUIDE.md](docs/RESQ_GUIDE.md)**. Read [docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md) before trusting any claim. Plan and gates: [docs/MVP_PHASES.md](docs/MVP_PHASES.md).
 
 RES-Q is an auxiliary coordination tool. It does not replace emergency services and cannot guarantee delivery or rescue.
 
@@ -23,11 +23,13 @@ RES-Q is an auxiliary coordination tool. It does not replace emergency services 
 - **Trust without a server.** Credentials are signed by authority keys that are pinned in person by fingerprint. Sybil collapse, forged-credential quarantine and flood control protect the mesh, and SOS details are sealed to verified responders.
 - **Network splits.** Disconnected islands resolve emergencies independently. When they reconnect, a deterministic event merge sends duplicates a stand-down, never cancels a responder already on scene, and reopens orphaned requests.
 - **Red Team Hour.** Diagnostics runs a simulated city of real RESQ nodes, with live attacks and measured outcomes.
+- **Built for the critical moment.** One-tap emergency picks (fire, flood, earthquake, not breathing…) and SOS works even with no text. Severity classes SOS-A to SOS-D, most critical first. The volunteer's phone rings until they answer; the victim's phone rings when help accepts and again when help arrives (detected by GPS). The victim sees the volunteer's profession, and their medical card is sent encrypted to that volunteer only. Any coordinates open in Google Maps.
 
 ## Docs
 
 | Doc | Purpose |
 | :--- | :--- |
+| [docs/RESQ_GUIDE.md](docs/RESQ_GUIDE.md) | **Start here:** the whole system in plain language, judge Q&A, demo plan, numbers |
 | [docs/MVP_PHASES.md](docs/MVP_PHASES.md) | Phased plan, gates, problem-statement traceability |
 | [docs/IMPLEMENTATION_REPORT.md](docs/IMPLEMENTATION_REPORT.md) | What was built, mapped to each criterion |
 | [docs/VERIFICATION_REPORT.md](docs/VERIFICATION_REPORT.md) | What has actually been verified |
