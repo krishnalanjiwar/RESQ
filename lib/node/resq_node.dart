@@ -1311,7 +1311,7 @@ class ResqNode implements WorldView {
 
   /// Who a responder is, as far as this phone can tell: declared skills plus
   /// any verified credential.
-  ({String name, Set<Capability> caps, bool verified, String? verifiedBy})? responderInfo(String id) {
+  ({String name, Set<Capability> caps, bool verified, String? verifiedBy, LocationFix? location})? responderInfo(String id) {
     final b = _beacons[id];
     if (b == null) return null;
     final verified = _trust.credentialStatus(b, this) == CredentialStatus.verified;
@@ -1320,7 +1320,35 @@ class ResqNode implements WorldView {
       caps: {...b.declaredCaps, if (verified) ...b.credential!.roles},
       verified: verified,
       verifiedBy: verified ? b.credential!.issuerName : null,
+      location: b.location,
     );
+  }
+
+  /// Close enough to count as "at the door", widened by GPS error but never
+  /// beyond [arrivalMaxM] so a poor fix can't fake an arrival from afar.
+  static const double arrivalBaseM = 30;
+  static const double arrivalMaxM = 100;
+  static const Duration arrivalFixMaxAge = Duration(minutes: 2);
+
+  /// Marks this responder ON SCENE for every request they accepted once their
+  /// own fresh GPS fix is within the arrival radius of the requester's
+  /// location. The event reaches the requester over the mesh like any other.
+  /// Returns the SOS ids that were marked.
+  Future<List<String>> autoMarkArrivals() async {
+    final me = _selfLocation;
+    if (me == null || nowMs - me.fixedAtMs > arrivalFixMaxAge.inMilliseconds) return const [];
+    final arrived = <String>[];
+    for (final e in myEngagements) {
+      if (e.standDown || !e.state.isActive) continue;
+      if (e.myProgress < SosEventKind.accepted.progress || e.myProgress >= SosEventKind.onScene.progress) continue;
+      final target = e.sos.location;
+      if (target == null) continue;
+      final radius = (arrivalBaseM + me.accuracyM + target.accuracyM).clamp(arrivalBaseM, arrivalMaxM);
+      if (me.point.distanceTo(target.point) > radius) continue;
+      await respond(e.sos.id, SosEventKind.onScene, note: 'arrived (auto, GPS)');
+      arrived.add(e.sos.id);
+    }
+    return arrived;
   }
 
   List<MySosView> get mySos {

@@ -36,6 +36,7 @@ No phase counts as ✅ Done until its exit criteria are verified. The per-phase 
 | 6 | Partition reconciliation | 🛠 Implemented — verification deferred | 2026-10-25 | — | — |
 | 7 | Red Team Hour & diagnostics | 🛠 Implemented — verification deferred | 2026-10-25 | — | — |
 | 8 | Hardening, release APK & demo | 🛠 Implemented — verification deferred | 2026-10-25 | — | — |
+| 9.1 | Tap-to-open Google Maps, brutalist dashboard (black/white/orange), SOS quick picks + SOS without text, automatic GPS arrival alerts to both sides | 🛠 Implemented — automated checks pass; on-device check pending | 2026-10-26 (owner: "do it asap") | — | `dist/resq-0.13.0-b7-*` |
 | 9 | Critical-time UX: dashboard + Home/Back, ringing alerts, medical card, SOS-A–D severity, responder profession, Google-style UI | 🛠 Implemented — automated checks pass; on-device check pending | 2026-10-26 (owner: "now complete it… build the APK now") | — | `dist/resq-0.12.0-b6-*` |
 
 Status values: `🔒 Locked` → `⏸ Awaiting approval` → `▶ In progress` → `🛠 Implemented — verification deferred` → `✅ Done` (or `⛔ Blocked`).

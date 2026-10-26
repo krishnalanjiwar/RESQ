@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
+import '../../core/geo.dart';
 import '../../domain/models.dart';
 import '../../domain/reconcile/reconciler.dart';
 import '../../domain/triage/triage_agent.dart';
@@ -11,6 +12,7 @@ import '../../ui/icons.dart';
 import '../../ui/motion.dart';
 import '../medical/medical_card_screen.dart';
 import '../shared/hazard_dialog.dart';
+import '../shared/location_link.dart';
 import '../shared/mesh_bar.dart';
 import '../shared/page.dart';
 import '../shared/widgets.dart';
@@ -31,13 +33,43 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
   bool _shareOpenly = true;
   bool _sending = false;
   TriageResult? _preview;
+  final Set<int> _picked = {};
 
   static const TriageAgent _triage = TriageAgent();
+
+  /// One-tap descriptions. Each phrase uses words the triage rules know, so a
+  /// tap sets the right severity without typing.
+  static const List<(String, String, String)> _quickPicks = [
+    ('Fire', ResqIcons.flame, 'fire and smoke'),
+    ('Flood', ResqIcons.water, 'flooded, water rising'),
+    ('Earthquake', ResqIcons.earthquake, 'earthquake, building collapsed'),
+    ('Trapped', ResqIcons.building, 'trapped under debris'),
+    ('Injured', ResqIcons.bandage, 'injured and bleeding'),
+    ('Not breathing', ResqIcons.heartPulse, 'unconscious, not breathing'),
+    ('Gas leak', ResqIcons.gas, 'gas leak'),
+    ('Stranded', ResqIcons.route, 'stranded, need evacuation'),
+    ('Food & water', ResqIcons.box, 'need food and drinking water'),
+    ('Child / elderly', ResqIcons.child, 'elderly person and child with me'),
+  ];
+
+  /// What gets sent: the tapped situations plus any typed details.
+  String _compose() {
+    final parts = [
+      for (final i in _picked.toList()..sort()) _quickPicks[i].$3,
+      if (_text.text.trim().isNotEmpty) _text.text.trim(),
+    ];
+    return parts.join('. ');
+  }
+
+  void _refreshPreview() {
+    final text = _compose();
+    setState(() => _preview = text.isEmpty ? null : _triage.analyze(text));
+  }
 
   @override
   void initState() {
     super.initState();
-    _text.addListener(() => setState(() => _preview = _text.text.trim().isEmpty ? null : _triage.analyze(_text.text)));
+    _text.addListener(_refreshPreview);
   }
 
   @override
@@ -48,23 +80,24 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
     super.dispose();
   }
 
+  /// Sends right away. Details are optional: in a crisis a bare SOS still
+  /// goes out (marked unclear, which ranks above minor requests).
   Future<void> _send() async {
-    if (_text.text.trim().isEmpty) {
-      Sfx.warn();
-      _focus.requestFocus();
-      notify(context, 'Describe what is happening first, then tap SOS.');
-      return;
-    }
     Sfx.tap();
+    final composed = _compose();
+    final text = composed.isEmpty ? 'SOS: help needed. No details given.' : composed;
     final node = ref.read(nodeProvider);
     final device = ref.read(deviceControllerProvider.notifier);
     setState(() => _sending = true);
     LocationFix? fix;
     if (_attachLocation) fix = await device.refreshLocation();
-    await node.submitSos(text: _text.text, location: fix, shareOpenlyIfNoKeys: _shareOpenly);
+    await node.submitSos(text: text, location: fix, shareOpenlyIfNoKeys: _shareOpenly);
     if (!mounted) return;
     Sfx.send();
-    setState(() => _sending = false);
+    setState(() {
+      _sending = false;
+      _picked.clear();
+    });
     _text.clear();
     _focus.unfocus();
     notify(context, node.transport.connectedPeers.isEmpty
@@ -84,7 +117,7 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
 
     return ResqPage(
       title: 'Get help',
-      subtitle: 'Describe what is happening and tap SOS. Your message hops between nearby phones until it reaches help.',
+      subtitle: 'Tap SOS now, or first tap what is happening. Your message hops between nearby phones until it reaches help.',
       children: [
           const MeshBar(),
           const SizedBox(height: 24),
@@ -136,6 +169,25 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
             ),
           ),
           const SizedBox(height: 16),
+          Text('Tap what is happening (optional)', style: t.titleSmall),
+          const SizedBox(height: 8),
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (var i = 0; i < _quickPicks.length; i++)
+              FilterChip(
+                showCheckmark: false,
+                selected: _picked.contains(i),
+                avatar: AppIcon(_quickPicks[i].$2, size: 18, color: _picked.contains(i) ? cs.onPrimary : cs.primary),
+                label: Text(_quickPicks[i].$1),
+                labelStyle: t.labelLarge?.copyWith(color: _picked.contains(i) ? cs.onPrimary : cs.onSurface),
+                selectedColor: cs.primary,
+                onSelected: (on) {
+                  Sfx.tap();
+                  on ? _picked.add(i) : _picked.remove(i);
+                  _refreshPreview();
+                },
+              ),
+          ]),
+          const SizedBox(height: 16),
           TextField(
             controller: _text,
             focusNode: _focus,
@@ -145,8 +197,8 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
             textCapitalization: TextCapitalization.sentences,
             decoration: const InputDecoration(
               labelText: 'What is happening?',
-              hintText: 'e.g. Need insulin for dad, ground floor flooded',
-              helperText: 'Any language. Short and specific helps the right person come.',
+              hintText: 'Optional details, e.g. 3 people on the roof, dad needs insulin',
+              helperText: 'Optional. Any language. SOS works even if this is empty.',
             ),
           ),
           if (_preview != null) ...[const SizedBox(height: 4), _TriagePreview(_preview!)],
@@ -327,6 +379,8 @@ class _RequestCard extends ConsumerWidget {
               skills: who?.caps.map(capabilityLabel).toList() ?? const [],
               verifiedBy: who?.verifiedBy,
               cardShared: node.medicalCardSentFor(s.id),
+              location: who?.location,
+              from: s.location?.point,
             ),
           ],
           if (ringing) ...[
@@ -358,10 +412,10 @@ class _RequestCard extends ConsumerWidget {
                 ? 'Details encrypted to ${s.recipientCount} verified responder${s.recipientCount == 1 ? '' : 's'}'
                 : (s.readable ? 'Details shared openly (no verified responders known)' : 'Details withheld — only type of help and area sent'),
           ),
-          InfoRow(
-            s.location == null ? ResqIcons.locationOff : ResqIcons.location,
-            s.location == null ? 'No location shared' : 'Location shared (±${s.location!.accuracyM.round()} m)',
-          ),
+          if (s.location == null)
+            const InfoRow(ResqIcons.locationOff, 'No location shared')
+          else
+            LocationLink(s.location!, title: 'Your shared location', label: 'My SOS location'),
           if (!closed)
             Align(
               alignment: Alignment.centerRight,
@@ -437,8 +491,12 @@ class _WhoIsComing extends StatelessWidget {
     required this.skills,
     required this.verifiedBy,
     required this.cardShared,
+    this.location,
+    this.from,
   });
 
+  final LocationFix? location;
+  final GeoPoint? from;
   final String profession;
   final String name;
   final List<String> skills;
@@ -477,6 +535,10 @@ class _WhoIsComing extends StatelessWidget {
         if (cardShared) ...[
           const SizedBox(height: 8),
           const InfoRow(ResqIcons.medical, 'Your medical card was sent to them, encrypted.', tone: Tone.good),
+        ],
+        if (location != null) ...[
+          const SizedBox(height: 6),
+          LocationLink(location!, title: 'Volunteer last seen at', label: 'Volunteer', from: from),
         ],
       ]),
     );

@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:resq/core/clock.dart';
+import 'package:resq/core/geo.dart';
 import 'package:resq/crypto/identity.dart';
 import 'package:resq/crypto/signatures.dart';
 import 'package:resq/data/resq_store.dart';
@@ -86,7 +87,12 @@ void main() {
     await settle();
     await tickAll();
 
-    final sosId = await victim.submitSos(text: 'dad collapsed, not breathing', location: null, shareOpenlyIfNoKeys: true);
+    const home = GeoPoint(19.0760, 72.8777);
+    final sosId = await victim.submitSos(
+      text: 'dad collapsed, not breathing',
+      location: LocationFix(point: home, accuracyM: 10, fixedAtMs: clock.nowMs()),
+      shareOpenlyIfNoKeys: true,
+    );
     await settle();
     await tickAll();
     expect(medic.sosRecords.any((s) => s.id == sosId), isTrue, reason: 'SOS reached the medic over 2 hops');
@@ -107,6 +113,17 @@ void main() {
     final who = victim.responderInfo(medic.selfId);
     expect(who, isNotNull);
     expect(professionOf(who!.caps), 'Medical');
+
+    // Arrival: nothing happens 400 m away; within the radius it is marked
+    // ON SCENE automatically and the requester sees it.
+    medic.setSelfLocation(LocationFix(point: home.offset(400, 0), accuracyM: 10, fixedAtMs: clock.nowMs()));
+    expect(await medic.autoMarkArrivals(), isEmpty);
+    medic.setSelfLocation(LocationFix(point: home.offset(20, 5), accuracyM: 10, fixedAtMs: clock.nowMs()));
+    expect(await medic.autoMarkArrivals(), [sosId]);
+    await settle();
+    await tickAll();
+    expect(victim.mySos.single.state.phase.name, 'onScene', reason: 'the requester learns the volunteer arrived');
+    expect(await medic.autoMarkArrivals(), isEmpty, reason: 'marked once only');
 
     for (final n in all) {
       await n.stop();

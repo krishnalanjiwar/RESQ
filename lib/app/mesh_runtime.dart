@@ -45,6 +45,7 @@ class MeshRuntime {
   Timer? _tick;
   Timer? _battery;
   Timer? _health;
+  Timer? _arrival;
   StreamSubscription<void>? _nodeSub;
 
   // Alert bookkeeping: seeded on start so a restart doesn't re-alert old items.
@@ -75,6 +76,7 @@ class MeshRuntime {
     _tick = Timer.periodic(const Duration(seconds: 5), (_) => unawaited(node.tick()));
     _battery = Timer.periodic(const Duration(seconds: 60), (_) => unawaited(_readBattery()));
     _health = Timer.periodic(const Duration(seconds: 15), (_) => unawaited(_checkRadioHealth()));
+    _arrival = Timer.periodic(const Duration(seconds: 15), (_) => unawaited(_checkArrival()));
     _nodeSub = node.changes.listen((_) => _checkAlerts());
     await _readBattery();
     permissionSummary = await permissions.status();
@@ -183,6 +185,12 @@ class MeshRuntime {
         SosPhase.searching => 'Responder lost contact. Searching for another responder.',
         _ => null,
       };
+      if (now == SosPhase.onScene) {
+        ringingAccepted.add(m.sos.id);
+        _ring(_alertId(m.sos.id, 0), 'YOUR VOLUNTEER HAS ARRIVED', 'They report being at your location. Make yourself seen or heard.');
+        _changed();
+        continue;
+      }
       if (now == SosPhase.accepted) {
         final who = m.state.primary == null ? null : node.responderInfo(m.state.primary!);
         final job = who == null ? null : professionOf(who.caps);
@@ -200,6 +208,22 @@ class MeshRuntime {
       if (e.standDown && _alertedStandDowns.add(e.sos.id)) {
         unawaited(alerts.notify(_alertId(e.sos.id, 3), 'STAND DOWN', 'Another responder has precedence for this request.'));
       }
+    }
+  }
+
+  /// While this phone is heading to someone, track GPS and mark the arrival
+  /// automatically, so both people know the moment help is at the door.
+  Future<void> _checkArrival() async {
+    final heading = node.myEngagements.any((e) =>
+        e.state.isActive &&
+        !e.standDown &&
+        e.myProgress >= SosEventKind.accepted.progress &&
+        e.myProgress < SosEventKind.onScene.progress);
+    if (!heading || !meshOn) return;
+    await refreshLocation(request: false);
+    for (final id in await node.autoMarkArrivals()) {
+      unawaited(alerts.notify(_alertId(id, 4), 'YOU HAVE ARRIVED',
+          'Marked ON SCENE automatically from your GPS. The person who asked for help is being alerted.'));
     }
   }
 
@@ -228,12 +252,13 @@ class MeshRuntime {
     _changed();
   }
 
-  int _alertId(String sosId, int kind) => (sosId.hashCode & 0x0FFFFFFF) * 4 + kind;
+  int _alertId(String sosId, int kind) => (sosId.hashCode & 0x0FFFFFFF) * 8 + kind;
 
   Future<void> dispose() async {
     _tick?.cancel();
     _battery?.cancel();
     _health?.cancel();
+    _arrival?.cancel();
     for (final t in _ringCaps.values) {
       t.cancel();
     }

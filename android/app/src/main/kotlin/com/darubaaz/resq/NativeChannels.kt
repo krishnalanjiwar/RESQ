@@ -4,12 +4,14 @@ import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.RingtoneManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
@@ -73,6 +75,12 @@ object NativeChannels {
                     playTone(call.argument<String>("kind") ?: "tap")
                     result.success(true)
                 }
+                "openMap" -> {
+                    val lat = call.argument<Double>("lat")
+                    val lng = call.argument<Double>("lng")
+                    val label = call.argument<String>("label") ?: "SOS"
+                    result.success(lat != null && lng != null && openMap(app, lat, lng, label))
+                }
                 else -> result.notImplemented()
             }
         }
@@ -132,6 +140,29 @@ object NativeChannels {
         true
     } catch (e: Exception) {
         false
+    }
+
+    /**
+     * Opens a coordinate in Google Maps; falls back to any map app, then to
+     * the Google Maps web link. Cached offline maps still work in the app.
+     */
+    private fun openMap(context: Context, lat: Double, lng: Double, label: String): Boolean {
+        val q = "$lat,$lng"
+        val geo = Uri.parse("geo:$q?q=$q(${Uri.encode(label)})")
+        val candidates = listOf(
+            Intent(Intent.ACTION_VIEW, geo).setPackage("com.google.android.apps.maps"),
+            Intent(Intent.ACTION_VIEW, geo),
+            Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/maps/search/?api=1&query=$q")),
+        )
+        for (intent in candidates) {
+            try {
+                context.startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return true
+            } catch (e: ActivityNotFoundException) {
+                continue
+            }
+        }
+        return false
     }
 
     /** Short interface sounds; quiet, on the notification stream. */

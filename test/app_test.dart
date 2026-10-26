@@ -110,8 +110,9 @@ void main() {
     await _node.setRole(NodeRole.victim);
     await _pumpApp(tester);
     expect(find.text('SOS'), findsOneWidget);
-    expect(find.text('What is happening?'), findsOneWidget);
     expect(find.text('Mesh is off'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('What is happening?'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('What is happening?'), findsOneWidget);
 
     await tester.enterText(find.byType(TextField), 'Need insulin for dad, ground floor flooded');
     await _settle(tester);
@@ -137,6 +138,33 @@ void main() {
     await tester.scrollUntilVisible(find.text('Waiting for a nearby phone'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('Waiting for a nearby phone'), findsOneWidget);
     expect(find.text('Cancel request'), findsOneWidget);
+  });
+
+  testWidgets('quick picks describe the emergency and SOS sends even with no text', (tester) async {
+    await _node.setRole(NodeRole.victim);
+    final before = _node.mySos.length;
+    await _pumpApp(tester);
+    await tester.scrollUntilVisible(find.text('Earthquake'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Earthquake'));
+    await _settle(tester);
+    await tester.scrollUntilVisible(find.text('How RES-Q reads this'), 200, scrollable: find.byType(Scrollable).first);
+    expect(find.text('How RES-Q reads this'), findsOneWidget);
+    await tester.tap(find.text('Earthquake'), warnIfMissed: false);
+    await _settle(tester);
+
+    // No chip, no text: the SOS still goes out.
+    await tester.scrollUntilVisible(find.text('Share my location'), 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Share my location'));
+    await _settle(tester);
+    await tester.fling(find.byType(Scrollable).first, const Offset(0, 3000), 4000);
+    await _settle(tester);
+    await tester.tap(find.text('SOS'));
+    for (var i = 0; i < 10 && _node.mySos.length == before; i++) {
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await tester.pump();
+    }
+    expect(_node.mySos.length, before + 1, reason: 'a bare SOS must still be sent');
+    await _settle(tester);
   });
 
   testWidgets('responder screen renders without layout errors', (tester) async {

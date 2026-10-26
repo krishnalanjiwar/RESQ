@@ -14,6 +14,7 @@ import '../../ui/icons.dart';
 import '../../ui/motion.dart';
 import '../medical/medical_card_screen.dart';
 import '../shared/hazard_dialog.dart';
+import '../shared/location_link.dart';
 import '../shared/mesh_bar.dart';
 import '../shared/page.dart';
 import '../shared/widgets.dart';
@@ -155,6 +156,7 @@ class _OfferCard extends ConsumerWidget {
             ],
             const SizedBox(height: 10),
             InfoRow(ResqIcons.location, 'Location: ${r.claim.locationLabel.toLowerCase()}'),
+            if (s.location != null) LocationLink(s.location!, label: 'SOS', from: node.selfLocation?.point),
             InfoRow(ResqIcons.battery, s.batteryPct == null ? 'Their battery: unknown' : 'Their battery: ${s.batteryPct}%'),
             InfoRow(s.sealed ? ResqIcons.lock : ResqIcons.unlock,
                 s.readable ? (s.sealed ? 'Decrypted for you' : 'Shared openly') : 'Details withheld by the requester'),
@@ -262,8 +264,12 @@ class _EngagementCard extends ConsumerWidget {
             StatusChip(_phase(e.state.phase), tone: closed ? Tone.neutral : Tone.info),
           ]),
           if (s.text != null) ...[const SizedBox(height: 10), Text('"${s.text}"', style: t.bodyMedium)],
-          if (s.location != null)
-            InfoRow(ResqIcons.location, '${s.location!.point} (±${s.location!.accuracyM.round()} m)', mono: true),
+          if (s.location != null) ...[
+            const SizedBox(height: 8),
+            LocationLink(s.location!, title: 'Go to', label: 'SOS', from: node.selfLocation?.point),
+          ],
+          if (e.myProgress < SosEventKind.onScene.progress && s.location != null && !closed)
+            const InfoRow(ResqIcons.flag, 'You will be marked ON SCENE automatically when your GPS reaches them.'),
           if (node.receivedCardFor(s.id) case final card?) ...[
             const SizedBox(height: 10),
             MedicalCardView(card),

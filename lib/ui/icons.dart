@@ -74,6 +74,17 @@ abstract final class ResqIcons {
   static const String bolt = '$_o' '<path d="M13 3L5 13h6l-1 8 8-10h-6z"/>' '$_c';
   static const String target = '$_o' '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1" fill="#000"/>' '$_c';
   static const String badge = '$_o' '<circle cx="12" cy="9" r="6"/><path d="M8.5 13.8L7 21l5-2.5 5 2.5-1.5-7.2"/>' '$_c';
+
+  // ---- Emergencies (quick picks) ----
+  static const String earthquake = '$_o' '<path d="M3 21h18"/><path d="M5 21V10l4-3v14M15 21V7l4 3v11"/><path d="M12 3l-1.5 4 2.5 2-2 4 1.5 3"/>' '$_c';
+  static const String bandage = '$_o' '<rect x="2.5" y="8" width="19" height="8" rx="4" transform="rotate(-45 12 12)"/><path d="M10.5 10.5h.01M13.5 13.5h.01M10.5 13.5h.01M13.5 10.5h.01"/>' '$_c';
+  static const String heartPulse = '$_o' '<path d="M20.5 8.5c0 5-8.5 11.5-8.5 11.5S3.5 13.5 3.5 8.5a4.5 4.5 0 0 1 8.5-2 4.5 4.5 0 0 1 8.5 2z"/><path d="M6 12h3l1.5-2.5 2.5 5 1.5-2.5H18"/>' '$_c';
+  static const String gas = '$_o' '<path d="M7 21h10"/><rect x="7" y="7" width="10" height="14" rx="2"/><path d="M10 7V4h4v3"/><path d="M12 11c-1.5 1.6-1.5 3.4 0 4.5 1.5-1.1 1.5-2.9 0-4.5z"/>' '$_c';
+  static const String child = '$_o' '<circle cx="9" cy="5" r="2"/><circle cx="16.5" cy="9" r="1.6"/><path d="M9 8v6M9 21v-7M6 11h6M16.5 12v4M16.5 21v-5M14.5 14h4"/>' '$_c';
+
+  // ---- Maps ----
+  static const String external = '$_o' '<path d="M14 4h6v6"/><path d="M20 4l-9 9"/><path d="M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>' '$_c';
+  static const String flag = '$_o' '<path d="M5 21V4"/><path d="M5 4h11l-2 4 2 4H5"/>' '$_c';
 }
 
 /// Renders a [ResqIcons] SVG in the current icon colour (or [color]).

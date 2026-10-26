@@ -23,6 +23,15 @@ abstract final class Brand {
   static const Color gGreen = Color(0xFF1E8E3E);
   static const List<Color> rainbow = [gBlue, gRed, gYellow, gGreen];
 
+  // Brutalist dashboard palette: black, white, orange and their shades only.
+  static const Color bBlack = Color(0xFF000000);
+  static const Color bInk = Color(0xFF1A1A1A);
+  static const Color bWhite = Color(0xFFFFFFFF);
+  static const Color bPaper = Color(0xFFFFF6EE);
+  static const Color bOrange = Color(0xFFFF5F00);
+  static const Color bOrangeDeep = Color(0xFFC24600);
+  static const Color bOrangeSoft = Color(0xFFFFD2B3);
+
   /// Beacon pin: a location pin with a coral beacon, broadcasting radio arcs
   /// (outer arcs tinted so the signal fades outward). Identical geometry to
   /// res/drawable/ic_launcher_foreground.xml and scripts/brand/render_icons.py.
@@ -42,15 +51,22 @@ abstract final class Brand {
       '<g transform="translate(54 55.68) scale(1.12) translate(-54 -54)">$_glyph</g></svg>';
 }
 
-/// The RES-Q logo mark (app icon tile).
+/// Same mark in the brutalist palette: black square tile, white pin, orange beacon.
+final String _markSvgBrutal = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 108 108">'
+    '<rect width="108" height="108" fill="#000000"/>'
+    '<g transform="translate(54 55.68) scale(1.12) translate(-54 -54)">'
+    '${Brand._glyph.replaceAll('#B4CDF5', '#FFD2B3').replaceAll('#FF6B5E', '#FF5F00')}</g></svg>';
+
+/// The RES-Q logo mark (app icon tile). [brutal] uses the black/orange variant.
 class BrandMark extends StatelessWidget {
-  const BrandMark({super.key, this.size = 40});
+  const BrandMark({super.key, this.size = 40, this.brutal = false});
 
   final double size;
+  final bool brutal;
 
   @override
   Widget build(BuildContext context) => SvgPicture.string(
-        Brand.markSvg,
+        brutal ? _markSvgBrutal : Brand.markSvg,
         width: size,
         height: size,
         semanticsLabel: 'RES-Q logo',
@@ -60,11 +76,14 @@ class BrandMark extends StatelessWidget {
 /// "RES-Q" wordmark: heavy Inter, red hyphen, blue Q. With [rainbow], each
 /// letter takes one of the four brand accents.
 class Wordmark extends StatelessWidget {
-  const Wordmark({super.key, this.fontSize = 28, this.onDark = false, this.rainbow = false});
+  const Wordmark({super.key, this.fontSize = 28, this.onDark = false, this.rainbow = false, this.accent});
 
   final double fontSize;
   final bool onDark;
   final bool rainbow;
+
+  /// When set, the hyphen and Q take this colour (brutalist variant).
+  final Color? accent;
 
   @override
   Widget build(BuildContext context) {
@@ -90,8 +109,8 @@ class Wordmark extends StatelessWidget {
             ]
           : [
         const TextSpan(text: 'RES'),
-        TextSpan(text: '-', style: TextStyle(color: onDark ? Brand.beacon : Brand.signalRed)),
-        TextSpan(text: 'Q', style: TextStyle(color: onDark ? Colors.white : Brand.blue)),
+        TextSpan(text: '-', style: TextStyle(color: accent ?? (onDark ? Brand.beacon : Brand.signalRed))),
+        TextSpan(text: 'Q', style: TextStyle(color: accent ?? (onDark ? Colors.white : Brand.blue))),
             ])),
     );
   }
