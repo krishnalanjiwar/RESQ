@@ -36,7 +36,11 @@ class CapabilityParser {
     Capability.fire: ['firefighter', 'fire fighter', 'fireman', 'fire brigade', 'fire extinguisher', 'damkal'],
     Capability.searchRescue: [
       'search and rescue', 'rescue', 'climber', 'rope', 'ropes', 'ladder', 'civil defence', 'civil defense',
-      'army', 'police', 'jawan', 'sdrf', 'excavator', 'jcb',
+      'army', 'jawan', 'sdrf', 'excavator', 'jcb',
+    ],
+    Capability.security: [
+      'police', 'policeman', 'police officer', 'cop', 'security', 'security guard', 'guard', 'home guard',
+      'constable', 'havaldar', 'पुलिस',
     ],
     Capability.vehicle: [
       'car', 'jeep', 'truck', 'tractor', 'van', 'bike', 'motorcycle', 'ambulance', 'auto', 'rickshaw', 'gaadi',

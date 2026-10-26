@@ -53,6 +53,17 @@ class MeshRuntime {
   final Set<String> _alertedStandDowns = {};
   bool _alertsSeeded = false;
 
+  /// Offers ringing on this (responder) phone until accepted, declined,
+  /// silenced or rolled over to someone else.
+  final Set<String> _ringingOffers = {};
+
+  /// This requester's SOS whose "help accepted" alarm is still ringing.
+  final Set<String> ringingAccepted = {};
+  final Map<int, Timer> _ringCaps = {};
+
+  /// No alarm rings forever: it stops on its own after this long.
+  static const Duration maxRing = Duration(minutes: 3);
+
   static const String _meshEnabledKey = 'mesh_enabled';
 
   void _changed() {
@@ -146,12 +157,19 @@ class MeshRuntime {
 
   void _checkAlerts() {
     if (!_alertsSeeded) return;
+    final offered = <String>{};
     for (final o in node.myOffers) {
       final s = o.assignment.sos;
+      offered.add(s.id);
       if (_alertedOffers.add(s.id)) {
         final needs = s.needs.isEmpty ? 'NEED UNCLEAR' : s.needs.map((n) => n.label).join(' + ');
-        unawaited(alerts.notify(_alertId(s.id, 1), 'SOS MATCHED TO YOU — ${s.urgency.label} · $needs', o.justification));
+        _ringingOffers.add(s.id);
+        _ring(_alertId(s.id, 1), '${s.urgency.sosClass} · $needs — RESPOND NOW', o.justification, tapStops: false);
       }
+    }
+    // Answered, declined or moved on to another responder: stop ringing.
+    for (final id in _ringingOffers.where((id) => !offered.contains(id)).toList()) {
+      silenceOffer(id);
     }
     for (final m in node.mySos) {
       final before = _knownPhases[m.sos.id];
@@ -165,6 +183,17 @@ class MeshRuntime {
         SosPhase.searching => 'Responder lost contact. Searching for another responder.',
         _ => null,
       };
+      if (now == SosPhase.accepted) {
+        final who = m.state.primary == null ? null : node.responderInfo(m.state.primary!);
+        final job = who == null ? null : professionOf(who.caps);
+        final role = who == null
+            ? 'A volunteer'
+            : 'A volunteer (${job == 'Volunteer' ? 'general help' : job}${who.verified ? ', verified' : ''})';
+        ringingAccepted.add(m.sos.id);
+        _ring(_alertId(m.sos.id, 0), 'HELP IS COMING', '$role accepted your SOS. Stay where you are if it is safe.');
+        _changed();
+        continue;
+      }
       if (text != null) unawaited(alerts.notify(_alertId(m.sos.id, 2), 'RES-Q — ${now.label}', text));
     }
     for (final e in node.myEngagements) {
@@ -174,12 +203,40 @@ class MeshRuntime {
     }
   }
 
+  void _ring(int id, String title, String body, {bool tapStops = true}) {
+    unawaited(alerts.ring(id, title, body, tapStops: tapStops));
+    _ringCaps.remove(id)?.cancel();
+    _ringCaps[id] = Timer(maxRing, () => _stopRing(id));
+  }
+
+  void _stopRing(int id) {
+    _ringCaps.remove(id)?.cancel();
+    unawaited(alerts.stopRing(id));
+  }
+
+  bool isOfferRinging(String sosId) => _ringingOffers.contains(sosId);
+
+  /// Responder silenced the alarm (or answered). The offer itself stays.
+  void silenceOffer(String sosId) {
+    if (_ringingOffers.remove(sosId)) _stopRing(_alertId(sosId, 1));
+    _changed();
+  }
+
+  /// Requester saw that help accepted.
+  void acknowledgeAccepted(String sosId) {
+    if (ringingAccepted.remove(sosId)) _stopRing(_alertId(sosId, 0));
+    _changed();
+  }
+
   int _alertId(String sosId, int kind) => (sosId.hashCode & 0x0FFFFFFF) * 4 + kind;
 
   Future<void> dispose() async {
     _tick?.cancel();
     _battery?.cancel();
     _health?.cancel();
+    for (final t in _ringCaps.values) {
+      t.cancel();
+    }
     await _nodeSub?.cancel();
     await _changes.close();
   }

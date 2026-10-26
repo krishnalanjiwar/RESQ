@@ -4,9 +4,9 @@ import '../ui/brand.dart';
 
 /// RES-Q design system on Material 3.
 ///
-/// Brand blue seeds a calm tonal palette; red is reserved for emergencies
-/// (the error colour). Inter gives the crisp, product-grade typography;
-/// headings are heavier with tight tracking, body text stays relaxed.
+/// Light mode is clean white with Google's four accents: blue (primary),
+/// yellow (warnings), green (good news) and red, reserved for emergencies.
+/// Inter gives crisp typography; headings are heavier with tight tracking.
 abstract final class ResqTheme {
   static const String fontFamily = 'Inter';
 
@@ -40,11 +40,41 @@ abstract final class ResqTheme {
   }
 
   static ThemeData _build(Brightness brightness) {
-    final scheme = ColorScheme.fromSeed(
+    final seeded = ColorScheme.fromSeed(
       seedColor: Brand.blue,
       brightness: brightness,
       error: brightness == Brightness.light ? Brand.signalRed : const Color(0xFFFFB4AB),
-    ).copyWith(primary: brightness == Brightness.light ? Brand.blue : null);
+    );
+    final scheme = brightness == Brightness.dark
+        ? seeded
+        : seeded.copyWith(
+            primary: Brand.gBlue,
+            onPrimary: Colors.white,
+            primaryContainer: const Color(0xFFD2E3FC),
+            onPrimaryContainer: const Color(0xFF174EA6),
+            secondary: Brand.gYellow,
+            onSecondary: const Color(0xFF202124),
+            secondaryContainer: const Color(0xFFFEF7E0),
+            onSecondaryContainer: const Color(0xFF7A4F01),
+            tertiary: Brand.gGreen,
+            onTertiary: Colors.white,
+            tertiaryContainer: const Color(0xFFE6F4EA),
+            onTertiaryContainer: const Color(0xFF0D652D),
+            error: Brand.gRed,
+            onError: Colors.white,
+            errorContainer: const Color(0xFFFCE8E6),
+            onErrorContainer: const Color(0xFFA50E0E),
+            surface: Colors.white,
+            onSurface: const Color(0xFF202124),
+            onSurfaceVariant: const Color(0xFF5F6368),
+            surfaceContainerLowest: Colors.white,
+            surfaceContainerLow: const Color(0xFFF8F9FA),
+            surfaceContainer: const Color(0xFFF1F3F4),
+            surfaceContainerHigh: const Color(0xFFECEEF0),
+            surfaceContainerHighest: const Color(0xFFE8EAED),
+            outline: const Color(0xFFBDC1C6),
+            outlineVariant: const Color(0xFFDADCE0),
+          );
     final base = ThemeData(useMaterial3: true, colorScheme: scheme, brightness: brightness);
     final text = _type(base.textTheme);
     return base.copyWith(
@@ -61,7 +91,7 @@ abstract final class ResqTheme {
       ),
       cardTheme: CardThemeData(
         elevation: 0,
-        color: scheme.surfaceContainerLow,
+        color: brightness == Brightness.light ? Colors.white : scheme.surfaceContainerLow,
         margin: EdgeInsets.zero,
         clipBehavior: Clip.antiAlias,
         shape: RoundedRectangleBorder(
@@ -86,6 +116,9 @@ abstract final class ResqTheme {
         ),
       ),
       textButtonTheme: TextButtonThemeData(style: TextButton.styleFrom(textStyle: text.labelLarge)),
+      pageTransitionsTheme: const PageTransitionsTheme(builders: {
+        TargetPlatform.android: FadeForwardsPageTransitionsBuilder(),
+      }),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: scheme.surfaceContainerLow,

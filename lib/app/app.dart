@@ -19,7 +19,8 @@ class ResqApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ResqTheme.light,
         darkTheme: ResqTheme.dark,
-        themeMode: ThemeMode.system,
+        // Clean white Google-style look on every phone, by design.
+        themeMode: ThemeMode.light,
         home: const _RoleRouter(),
       );
 }
@@ -33,12 +34,24 @@ class _RoleRouter extends ConsumerWidget {
     ref.watch(nodeVersionProvider);
     ref.watch(deviceControllerProvider);
     final role = ref.watch(nodeProvider).role;
-    return switch (role) {
-      null => const RoleSelectionScreen(),
-      NodeRole.victim => const VictimScreen(),
-      NodeRole.responder => const ResponderScreen(),
-      NodeRole.diagnostics => const DiagnosticsScreen(),
-    };
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 280),
+      switchInCurve: Curves.easeOutCubic,
+      switchOutCurve: Curves.easeInCubic,
+      transitionBuilder: (child, animation) => FadeTransition(
+        opacity: animation,
+        child: ScaleTransition(scale: Tween(begin: 0.98, end: 1.0).animate(animation), child: child),
+      ),
+      child: KeyedSubtree(
+        key: ValueKey(role),
+        child: switch (role) {
+          null => const RoleSelectionScreen(),
+          NodeRole.victim => const VictimScreen(),
+          NodeRole.responder => const ResponderScreen(),
+          NodeRole.diagnostics => const DiagnosticsScreen(),
+        },
+      ),
+    );
   }
 }
 

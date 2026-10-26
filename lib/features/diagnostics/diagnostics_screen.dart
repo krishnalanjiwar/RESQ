@@ -6,7 +6,6 @@ import '../../crypto/identity.dart';
 import '../../domain/models.dart';
 import '../../domain/world.dart';
 import '../../sim/simulator.dart';
-import '../../ui/brand.dart';
 import '../../ui/icons.dart';
 import '../shared/back_to_start.dart';
 import '../shared/mesh_bar.dart';
@@ -26,10 +25,7 @@ class DiagnosticsScreen extends StatelessWidget {
           appBar: AppBar(
             leading: const BackToStartButton(),
             title: const Text('Test & train'),
-            actions: const [
-              Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: BrandMark(size: 28)),
-              StatusButton(),
-            ],
+            actions: const [HomeButton(), StatusButton(), SizedBox(width: 4)],
             bottom: TabBar(tabs: [
               Tab(icon: AppIcon(ResqIcons.map, size: 20), text: 'Simulator'),
               Tab(icon: AppIcon(ResqIcons.mesh, size: 20), text: 'This phone'),

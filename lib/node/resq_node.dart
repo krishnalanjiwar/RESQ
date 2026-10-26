@@ -110,6 +110,13 @@ class ResqNode implements WorldView {
   LocationFix? _selfLocation;
   int? _realBattery;
   int? _batteryOverride;
+  MedicalCard? _medicalCard;
+
+  /// Medical cards requesters sealed to this phone: sosId -> (sender, card).
+  final Map<String, (String, MedicalCard)> _receivedCards = {};
+
+  /// `sosId|responder` pairs this requester already sent its card to.
+  final Set<String> _cardsSent = {};
 
   // ---- Knowledge (rebuilt from envelopes) ----
   final Map<String, Envelope> _live = {};
@@ -257,6 +264,7 @@ class ResqNode implements WorldView {
     }
 
     _refreshViews();
+    await _shareMedicalCards();
     // Heartbeats keep an assignment alive so peers don't treat it as orphaned.
     for (final s in _states.values) {
       final track = s.tracks[selfId];
@@ -313,6 +321,10 @@ class ResqNode implements WorldView {
     _lamport = int.tryParse(store.getMeta('lamport') ?? '') ?? 0;
     final cred = store.getMeta('my_credential');
     if (cred != null) _myCredential = Credential.fromJson(jsonDecode(cred));
+    final card = store.getMeta('medical_card');
+    if (card != null) _medicalCard = MedicalCard.fromJson(jsonDecode(card));
+    final sent = store.getMeta('cards_sent');
+    if (sent != null) _cardsSent.addAll((jsonDecode(sent) as List).cast<String>());
     final pinned = store.getMeta('pinned_anchors');
     if (pinned != null) _pinnedAnchors.addAll((jsonDecode(pinned) as List).cast<String>());
     final penalties = store.getMeta('penalties');
@@ -353,6 +365,29 @@ class ResqNode implements WorldView {
     await store.deleteMeta('role');
     _invalidate();
     _changed();
+  }
+
+  MedicalCard? get medicalCard => _medicalCard;
+
+  /// Saved in the encrypted store; never broadcast. See [_shareMedicalCards].
+  Future<void> setMedicalCard(MedicalCard card) async {
+    _medicalCard = card.isEmpty ? null : card;
+    if (_medicalCard == null) {
+      await store.deleteMeta('medical_card');
+    } else {
+      await store.putMeta('medical_card', jsonEncode(card.toJson()));
+    }
+    _changed();
+  }
+
+  /// True once this requester's card went to at least one accepting responder.
+  bool medicalCardSentFor(String sosId) => _cardsSent.any((k) => k.startsWith('$sosId|'));
+
+  /// The requester's medical card for [sosId], if they sealed one to this phone.
+  MedicalCard? receivedCardFor(String sosId) {
+    final entry = _receivedCards[sosId];
+    if (entry == null || _sos[sosId]?.origin != entry.$1) return null;
+    return entry.$2;
   }
 
   Future<void> setDisplayName(String name) async {
@@ -526,6 +561,11 @@ class ResqNode implements WorldView {
       }
     }
     _invalidate();
+    // Someone accepted our SOS: send them the medical card now, not at the next tick.
+    if (env.type == MsgType.event && env.body['kind'] == SosEventKind.accepted.name && _medicalCard != null) {
+      final sosId = env.body['sos'];
+      if (sosId is String && _sos[sosId]?.origin == selfId) await _shareMedicalCards();
+    }
     _changed();
   }
 
@@ -590,6 +630,17 @@ class ResqNode implements WorldView {
           return false;
         }
         if (lam > _lamport) _lamport = lam;
+        if (kind == SosEventKind.medicalCard && b['card'] is Map<String, dynamic>) {
+          final opened = await SealedBox.open(b['card'] as Map<String, dynamic>, identity, aad: utf8.encode(env.id));
+          if (opened != null) {
+            try {
+              final card = MedicalCard.fromJson(jsonDecode(utf8.decode(opened)));
+              if (card != null) _receivedCards[sosId] = (env.origin, card);
+            } on Object {
+              log.add(receivedAt, LogCategory.security, 'MEDICAL_CARD_INVALID');
+            }
+          }
+        }
         final note = b['note'];
         _events.putIfAbsent(sosId, () => {})[env.id] = SosEventRecord(
           id: env.id,
@@ -882,7 +933,7 @@ class ResqNode implements WorldView {
     }, ttl: 3);
   }
 
-  Future<void> _publishEvent(String sosId, SosEventKind kind, {String? note}) async {
+  Future<void> _publishEvent(String sosId, SosEventKind kind, {String? note, Map<String, Object?>? extra, String? id}) async {
     _lamport++;
     await store.putMeta('lamport', '$_lamport');
     await _publish(
@@ -893,9 +944,39 @@ class ResqNode implements WorldView {
         'lam': _lamport,
         if (note != null && note.isNotEmpty)
           'note': note.length > Limits.maxNoteChars ? note.substring(0, Limits.maxNoteChars) : note,
+        ...?extra,
       },
       lifetime: kind == SosEventKind.heartbeat ? Limits.heartbeatLifetime : null,
+      id: id,
     );
+  }
+
+  /// Sends this requester's medical card to each responder who accepted one of
+  /// its SOS, sealed to that responder alone. Relays see only an opaque blob.
+  Future<void> _shareMedicalCards() async {
+    final card = _medicalCard;
+    if (card == null) return;
+    for (final st in states.values) {
+      final sos = _sos[st.sosId];
+      if (sos == null || sos.origin != selfId || !st.isActive) continue;
+      for (final t in st.tracks.values) {
+        if (t.progress < SosEventKind.accepted.progress || t.withdrawn) continue;
+        final key = '${st.sosId}|${t.responder}';
+        final encKey = _beacons[t.responder]?.encKey;
+        if (encKey == null || _cardsSent.contains(key)) continue;
+        _cardsSent.add(key);
+        final id = newMessageId();
+        try {
+          final sealed = await SealedBox.seal(utf8.encode(jsonEncode(card.toJson())), [encKey], aad: utf8.encode(id));
+          await _publishEvent(st.sosId, SosEventKind.medicalCard, extra: {'card': sealed}, id: id);
+          log.add(nowMs, LogCategory.dispatch, 'MEDICAL_CARD_SHARED', 'sealed to the accepting responder');
+        } on Object {
+          _cardsSent.remove(key);
+          continue;
+        }
+        await store.putMeta('cards_sent', jsonEncode(_cardsSent.toList()));
+      }
+    }
   }
 
   // =====================================================================
@@ -1222,6 +1303,26 @@ class ResqNode implements WorldView {
     return DeliveryStatus(DeliveryStage.savedLocally, sent, acked);
   }
 
+  /// Most critical first; equally critical requests by who has waited longest.
+  static int bySeverity(SosRecord a, SosRecord b) {
+    final w = b.urgency.weight.compareTo(a.urgency.weight);
+    return w != 0 ? w : a.claimedAtMs.compareTo(b.claimedAtMs);
+  }
+
+  /// Who a responder is, as far as this phone can tell: declared skills plus
+  /// any verified credential.
+  ({String name, Set<Capability> caps, bool verified, String? verifiedBy})? responderInfo(String id) {
+    final b = _beacons[id];
+    if (b == null) return null;
+    final verified = _trust.credentialStatus(b, this) == CredentialStatus.verified;
+    return (
+      name: b.name,
+      caps: {...b.declaredCaps, if (verified) ...b.credential!.roles},
+      verified: verified,
+      verifiedBy: verified ? b.credential!.issuerName : null,
+    );
+  }
+
   List<MySosView> get mySos {
     final list = [
       for (final s in _sos.values)
@@ -1233,9 +1334,10 @@ class ResqNode implements WorldView {
   List<OfferView> get myOffers {
     if (_role != NodeRole.responder) return const [];
     final now = nowMs;
+    final mine = plan.assignments.values.where((a) => a.primary == selfId).toList()
+      ..sort((a, b) => bySeverity(a.sos, b.sos));
     return [
-      for (final a in plan.assignments.values)
-        if (a.primary == selfId)
+      for (final a in mine)
           OfferView(
             assignment: a,
             justification: _justifier.build(
@@ -1262,7 +1364,11 @@ class ResqNode implements WorldView {
 
   /// SOS this node is engaged with as a responder (including stand-down notices).
   List<EngagementView> get myEngagements => [
-        for (final st in states.values)
+        for (final st in states.values.toList()
+          ..sort((a, b) {
+            final sa = _sos[a.sosId], sb = _sos[b.sosId];
+            return sa == null || sb == null ? 0 : bySeverity(sa, sb);
+          }))
           if ((st.tracks[selfId]?.progress ?? 0) > 0 || st.orphaned.contains(selfId))
             if (_sos[st.sosId] != null)
               EngagementView(
@@ -1289,7 +1395,7 @@ class ResqNode implements WorldView {
         myResult: p.results[(s.id, selfId)],
       ));
     }
-    out.sort((a, b) => b.sos.urgency.weight.compareTo(a.sos.urgency.weight));
+    out.sort((a, b) => bySeverity(a.sos, b.sos));
     return out;
   }
 

@@ -129,7 +129,7 @@ class Reconciler {
           if (t.progress < SosEventKind.onScene.progress) t.withdrawn = true;
         case SosEventKind.declined:
           if (t.progress == 0) t.declined = true;
-        case SosEventKind.heartbeat || SosEventKind.cancelled:
+        case SosEventKind.heartbeat || SosEventKind.cancelled || SosEventKind.medicalCard:
           break;
       }
     }

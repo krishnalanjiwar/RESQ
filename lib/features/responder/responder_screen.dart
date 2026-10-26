@@ -11,6 +11,8 @@ import '../../domain/world.dart';
 import '../../node/views.dart';
 import '../../protocol/limits.dart';
 import '../../ui/icons.dart';
+import '../../ui/motion.dart';
+import '../medical/medical_card_screen.dart';
 import '../shared/hazard_dialog.dart';
 import '../shared/mesh_bar.dart';
 import '../shared/page.dart';
@@ -24,17 +26,10 @@ class ResponderScreen extends ConsumerStatefulWidget {
 }
 
 class _ResponderScreenState extends ConsumerState<ResponderScreen> {
-  late final TextEditingController _profile = TextEditingController(text: ref.read(nodeProvider).profileText);
-
-  @override
-  void dispose() {
-    _profile.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     ref.watch(nodeVersionProvider);
+    ref.watch(deviceControllerProvider); // alarm state lives in the runtime
     final node = ref.watch(nodeProvider);
     final offers = node.myOffers;
     final engagements = node.myEngagements;
@@ -46,6 +41,8 @@ class _ResponderScreenState extends ConsumerState<ResponderScreen> {
       subtitle: 'You are only offered requests you are best placed to help with. Nothing moves you without your decision.',
       children: [
           const MeshBar(),
+          const SizedBox(height: 12),
+          const _AvailabilityStrip(),
           SectionHeader('Matched to you', trailing: offers.isEmpty ? null : StatusChip('${offers.length}', tone: Tone.danger)),
           if (offers.isEmpty)
             const EmptyState(
@@ -56,8 +53,6 @@ class _ResponderScreenState extends ConsumerState<ResponderScreen> {
           for (final o in offers) Padding(padding: const EdgeInsets.only(bottom: 12), child: _OfferCard(o)),
           if (engagements.isNotEmpty) const SectionHeader('Your assignments'),
           for (final e in engagements) Padding(padding: const EdgeInsets.only(bottom: 12), child: _EngagementCard(e)),
-          const SectionHeader('Your skills'),
-          _ProfileCard(controller: _profile),
           SectionHeader('Other open requests', trailing: open.isEmpty ? null : Text('${open.length}')),
           if (open.isEmpty)
             const EmptyState(icon: ResqIcons.checkCircle, title: 'No other open requests', body: 'Nothing else is waiting nearby.'),
@@ -74,7 +69,7 @@ class _ResponderScreenState extends ConsumerState<ResponderScreen> {
 }
 
 Widget _needsChips(SosRecord s) => Wrap(spacing: 8, runSpacing: 8, children: [
-      UrgencyChip(s.urgency),
+      SosClassBadge(s.urgency),
       if (s.needs.isEmpty) const StatusChip('Need unclear', icon: ResqIcons.help),
       for (final n in s.needs) StatusChip(needLabel(n), icon: needIcon(n)),
     ]);
@@ -108,17 +103,43 @@ class _OfferCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ref.read(nodeProvider);
+    final runtime = ref.read(meshRuntimeProvider);
     final t = Theme.of(context).textTheme;
     final cs = Theme.of(context).colorScheme;
     final a = offer.assignment;
     final s = a.sos;
     final r = a.primaryResult;
+    final ringing = runtime.isOfferRinging(s.id);
 
-    return Card(
+    return PulseGlow(
+      color: sosClassColor(s.urgency),
+      active: ringing,
+      child: Card(
       elevation: 1,
-      color: cs.surfaceContainer,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Container(height: 4, color: cs.error),
+        Container(height: 5, color: sosClassColor(s.urgency)),
+        if (ringing)
+          Material(
+            color: cs.errorContainer,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 6, 4, 6),
+              child: Row(children: [
+                AppIcon(ResqIcons.warning, size: 18, color: cs.onErrorContainer),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text('Alarm ringing until you answer',
+                      style: t.labelLarge?.copyWith(color: cs.onErrorContainer)),
+                ),
+                TextButton(
+                  onPressed: () {
+                    Sfx.tap();
+                    runtime.silenceOffer(s.id);
+                  },
+                  child: const Text('Silence'),
+                ),
+              ]),
+            ),
+          ),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -164,7 +185,11 @@ class _OfferCard extends ConsumerWidget {
           child: Row(children: [
             Expanded(
               child: OutlinedButton(
-                onPressed: () => node.respond(s.id, SosEventKind.declined),
+                onPressed: () {
+                  Sfx.warn();
+                  runtime.silenceOffer(s.id);
+                  node.respond(s.id, SosEventKind.declined);
+                },
                 child: const Text('Decline'),
               ),
             ),
@@ -172,8 +197,10 @@ class _OfferCard extends ConsumerWidget {
             Expanded(
               child: FilledButton.icon(
                 onPressed: () async {
+                  Sfx.success();
+                  runtime.silenceOffer(s.id);
                   await node.respond(s.id, SosEventKind.accepted);
-                  if (context.mounted) notify(context, 'Accepted. The requester has been told.');
+                  if (context.mounted) notify(context, 'Accepted. Their phone will ring when your answer reaches them.');
                 },
                 icon: AppIcon(ResqIcons.check, size: 18, color: cs.onPrimary),
                 label: const Text('Accept'),
@@ -182,6 +209,7 @@ class _OfferCard extends ConsumerWidget {
           ]),
         ),
       ]),
+      ),
     );
   }
 }
@@ -215,9 +243,14 @@ class _EngagementCard extends ConsumerWidget {
       if (done) {
         return FilledButton.tonalIcon(onPressed: null, icon: AppIcon(ResqIcons.check, size: 16), label: child);
       }
+      void press() {
+        Sfx.success();
+        node.respond(s.id, kind);
+      }
+
       return next
-          ? FilledButton(onPressed: () => node.respond(s.id, kind), child: child)
-          : OutlinedButton(onPressed: () => node.respond(s.id, kind), child: child);
+          ? FilledButton(onPressed: press, child: child)
+          : OutlinedButton(onPressed: press, child: child);
     }
 
     return Card(
@@ -231,6 +264,10 @@ class _EngagementCard extends ConsumerWidget {
           if (s.text != null) ...[const SizedBox(height: 10), Text('"${s.text}"', style: t.bodyMedium)],
           if (s.location != null)
             InfoRow(ResqIcons.location, '${s.location!.point} (±${s.location!.accuracyM.round()} m)', mono: true),
+          if (node.receivedCardFor(s.id) case final card?) ...[
+            const SizedBox(height: 10),
+            MedicalCardView(card),
+          ],
           if (e.state.orphaned.contains(node.selfId)) ...[
             const SizedBox(height: 8),
             const Callout('Your assignment was released after loss of contact. The request is open again.', tone: Tone.warn),
@@ -410,6 +447,80 @@ class _OpenRequestCard extends ConsumerWidget {
           ),
         ]),
       ),
+    );
+  }
+}
+
+/// Top of the responder screen: one switch for availability and the skills
+/// others see, with a link to edit them.
+class _AvailabilityStrip extends ConsumerWidget {
+  const _AvailabilityStrip();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final node = ref.watch(nodeProvider);
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    final caps = node.profile.capabilities;
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 8, 12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            value: node.available,
+            onChanged: (v) {
+              Sfx.tap();
+              node.setAvailable(v);
+            },
+            title: Text(node.available ? 'Available for requests' : 'Not available', style: t.titleMedium),
+            subtitle: Text(node.available ? 'Nearby people can be matched to you' : 'You will not receive offers'),
+          ),
+          Row(children: [
+            Expanded(
+              child: caps.isEmpty
+                  ? Text('No skills added yet', style: t.bodySmall?.copyWith(color: cs.onSurfaceVariant))
+                  : Wrap(spacing: 6, runSpacing: 6, children: [
+                      for (final c in caps) StatusChip(capabilityLabel(c), icon: capabilityIcon(c), tone: Tone.info),
+                    ]),
+            ),
+            TextButton(
+              onPressed: () {
+                Sfx.tap();
+                Navigator.of(context).push(MaterialPageRoute<void>(builder: (_) => const _SkillsScreen()));
+              },
+              child: Text(caps.isEmpty ? 'Add skills' : 'Edit'),
+            ),
+          ]),
+        ]),
+      ),
+    );
+  }
+}
+
+class _SkillsScreen extends ConsumerStatefulWidget {
+  const _SkillsScreen();
+
+  @override
+  ConsumerState<_SkillsScreen> createState() => _SkillsScreenState();
+}
+
+class _SkillsScreenState extends ConsumerState<_SkillsScreen> {
+  late final TextEditingController _profile = TextEditingController(text: ref.read(nodeProvider).profileText);
+
+  @override
+  void dispose() {
+    _profile.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(nodeVersionProvider);
+    return SubPage(
+      title: 'Your skills',
+      subtitle: 'Say what you can do in any language. People in need see your profession when you accept.',
+      children: [_ProfileCard(controller: _profile)],
     );
   }
 }

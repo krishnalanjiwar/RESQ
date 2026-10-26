@@ -8,6 +8,8 @@ import '../../domain/triage/triage_agent.dart';
 import '../../node/views.dart';
 import '../../protocol/limits.dart';
 import '../../ui/icons.dart';
+import '../../ui/motion.dart';
+import '../medical/medical_card_screen.dart';
 import '../shared/hazard_dialog.dart';
 import '../shared/mesh_bar.dart';
 import '../shared/page.dart';
@@ -48,10 +50,12 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
 
   Future<void> _send() async {
     if (_text.text.trim().isEmpty) {
+      Sfx.warn();
       _focus.requestFocus();
       notify(context, 'Describe what is happening first, then tap SOS.');
       return;
     }
+    Sfx.tap();
     final node = ref.read(nodeProvider);
     final device = ref.read(deviceControllerProvider.notifier);
     setState(() => _sending = true);
@@ -59,6 +63,7 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
     if (_attachLocation) fix = await device.refreshLocation();
     await node.submitSos(text: _text.text, location: fix, shareOpenlyIfNoKeys: _shareOpenly);
     if (!mounted) return;
+    Sfx.send();
     setState(() => _sending = false);
     _text.clear();
     _focus.unfocus();
@@ -160,16 +165,37 @@ class _VictimScreenState extends ConsumerState<VictimScreen> with SingleTickerPr
                     : 'Last fix ±${device.lastFix!.accuracyM.round()} m · ${ago(device.lastFix!.fixedAtMs, node.nowMs)}'),
               ),
               const Divider(indent: 16, endIndent: 16),
-              SwitchListTile(
-                value: _shareOpenly,
-                onChanged: (v) => setState(() => _shareOpenly = v),
-                secondary: AppIcon(_shareOpenly ? ResqIcons.unlock : ResqIcons.lock, color: cs.onSurfaceVariant),
-                title: const Text('Share details if no verified responder is nearby'),
-                subtitle: Text(_shareOpenly
-                    ? 'Details are encrypted when verified responders are known. Otherwise nearby phones can read them.'
-                    : 'Without verified responders, only urgency, type of help and a rough area are sent.'),
+              Theme(
+                data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                child: ExpansionTile(
+                  leading: AppIcon(_shareOpenly ? ResqIcons.unlock : ResqIcons.lock, color: cs.onSurfaceVariant),
+                  title: const Text('Privacy options'),
+                  children: [
+                    SwitchListTile(
+                      value: _shareOpenly,
+                      onChanged: (v) => setState(() => _shareOpenly = v),
+                      title: const Text('Share details if no verified responder is nearby'),
+                      subtitle: Text(_shareOpenly
+                          ? 'Details are encrypted when verified responders are known. Otherwise nearby phones can read them.'
+                          : 'Without verified responders, only urgency, type of help and a rough area are sent.'),
+                    ),
+                  ],
+                ),
               ),
             ]),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              contentPadding: const EdgeInsets.fromLTRB(16, 6, 12, 6),
+              leading: AppIcon(ResqIcons.medical, color: cs.tertiary),
+              title: const Text('Medical card'),
+              subtitle: Text(node.medicalCard == null
+                  ? 'Not set up. Add it so whoever comes knows your blood group and medicines.'
+                  : 'Ready. Goes only to the volunteer who accepts.'),
+              trailing: AppIcon(ResqIcons.chevronRight, size: 20, color: cs.outline),
+              onTap: () => openMedicalCard(context),
+            ),
           ),
           const SizedBox(height: 12),
           OutlinedButton.icon(
@@ -209,6 +235,7 @@ class _TriagePreview extends StatelessWidget {
           Text('How RES-Q reads this', style: t.labelLarge),
           const SizedBox(height: 8),
           Wrap(spacing: 8, runSpacing: 8, children: [
+            SosClassBadge(result.urgency),
             UrgencyChip(result.urgency),
             for (final n in result.needs) StatusChip(needLabel(n), icon: needIcon(n)),
           ]),
@@ -264,8 +291,13 @@ class _RequestCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final node = ref.read(nodeProvider);
+    final runtime = ref.read(meshRuntimeProvider);
     final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
     final s = view.sos;
+    final ringing = runtime.ringingAccepted.contains(s.id);
+    final primary = view.state.primary;
+    final who = primary == null ? null : node.responderInfo(primary);
     final closed = view.state.phase == SosPhase.cancelled || view.state.phase == SosPhase.resolved || view.state.phase == SosPhase.expired;
     final reached = _reached();
 
@@ -274,10 +306,10 @@ class _RequestCard extends ConsumerWidget {
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           Row(children: [
-            UrgencyChip(s.urgency),
+            Flexible(flex: 2, child: SosClassBadge(s.urgency)),
             const SizedBox(width: 8),
             Expanded(child: Text(ago(s.claimedAtMs, node.nowMs), style: t.bodySmall)),
-            if (closed) StatusChip(_headline(), tone: Tone.neutral),
+            if (closed) Flexible(child: StatusChip(_headline(), tone: Tone.neutral)),
           ]),
           const SizedBox(height: 12),
           Text(_headline(), style: t.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
@@ -287,6 +319,28 @@ class _RequestCard extends ConsumerWidget {
               child: Text('They have not confirmed leaving yet.', style: t.bodySmall),
             ),
           if (!closed) ...[const SizedBox(height: 14), _Timeline(steps: _steps, reached: reached)],
+          if (primary != null && view.state.isActive) ...[
+            const SizedBox(height: 14),
+            _WhoIsComing(
+              profession: who == null ? 'Volunteer' : professionOf(who.caps),
+              name: who?.name ?? '',
+              skills: who?.caps.map(capabilityLabel).toList() ?? const [],
+              verifiedBy: who?.verifiedBy,
+              cardShared: node.medicalCardSentFor(s.id),
+            ),
+          ],
+          if (ringing) ...[
+            const SizedBox(height: 10),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: cs.tertiary, foregroundColor: cs.onTertiary),
+              onPressed: () {
+                Sfx.success();
+                runtime.acknowledgeAccepted(s.id);
+              },
+              icon: AppIcon(ResqIcons.check, size: 18, color: cs.onTertiary),
+              label: const Text('Got it, stop the alarm'),
+            ),
+          ],
           if (view.state.reopened) ...[
             const SizedBox(height: 12),
             const Callout('Your responder lost contact. RES-Q is looking for someone else.', tone: Tone.warn),
@@ -315,6 +369,8 @@ class _RequestCard extends ConsumerWidget {
                 onPressed: () async {
                   if (await confirm(context, 'Cancel this request?', 'Responders will be told you no longer need help.',
                       yes: 'Cancel request', destructive: true)) {
+                    Sfx.warn();
+                    runtime.acknowledgeAccepted(s.id);
                     await node.cancelSos(s.id);
                   }
                 },
@@ -369,5 +425,60 @@ class _Timeline extends StatelessWidget {
           ),
       ]),
     ]);
+  }
+}
+
+/// "Who is coming": the accepting volunteer's profession, skills and whether
+/// a trusted authority verified them.
+class _WhoIsComing extends StatelessWidget {
+  const _WhoIsComing({
+    required this.profession,
+    required this.name,
+    required this.skills,
+    required this.verifiedBy,
+    required this.cardShared,
+  });
+
+  final String profession;
+  final String name;
+  final List<String> skills;
+  final String? verifiedBy;
+  final bool cardShared;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = Theme.of(context).textTheme;
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: cs.primaryContainer.withValues(alpha: 0.6), borderRadius: BorderRadius.circular(14)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('WHO IS COMING', style: t.labelSmall?.copyWith(color: cs.onPrimaryContainer, letterSpacing: 1)),
+        const SizedBox(height: 6),
+        Row(children: [
+          AppIcon(verifiedBy != null ? ResqIcons.shieldCheck : ResqIcons.person, size: 22, color: cs.onPrimaryContainer),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$profession volunteer${name.isEmpty ? '' : ' · $name'}',
+              style: t.titleMedium?.copyWith(color: cs.onPrimaryContainer, fontWeight: FontWeight.w700),
+            ),
+          ),
+        ]),
+        const SizedBox(height: 4),
+        Text(
+          verifiedBy != null ? 'Verified by $verifiedBy' : 'Skills are self-declared, not verified by an authority',
+          style: t.bodySmall?.copyWith(color: cs.onPrimaryContainer),
+        ),
+        if (skills.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          Wrap(spacing: 6, runSpacing: 6, children: [for (final k in skills) StatusChip(k, tone: Tone.info)]),
+        ],
+        if (cardShared) ...[
+          const SizedBox(height: 8),
+          const InfoRow(ResqIcons.medical, 'Your medical card was sent to them, encrypted.', tone: Tone.good),
+        ],
+      ]),
+    );
   }
 }

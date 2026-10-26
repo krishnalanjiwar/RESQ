@@ -16,6 +16,13 @@ abstract final class Brand {
   static const Color signalRed = Color(0xFFD93025);
   static const Color ink = Color(0xFF0B1B33);
 
+  // Google-style four-colour accents, used on white.
+  static const Color gBlue = Color(0xFF1A73E8);
+  static const Color gRed = Color(0xFFD93025);
+  static const Color gYellow = Color(0xFFF9AB00);
+  static const Color gGreen = Color(0xFF1E8E3E);
+  static const List<Color> rainbow = [gBlue, gRed, gYellow, gGreen];
+
   /// Beacon pin: a location pin with a coral beacon, broadcasting radio arcs
   /// (outer arcs tinted so the signal fades outward). Identical geometry to
   /// res/drawable/ic_launcher_foreground.xml and scripts/brand/render_icons.py.
@@ -50,12 +57,14 @@ class BrandMark extends StatelessWidget {
       );
 }
 
-/// "RES-Q" wordmark: heavy Inter, red hyphen, blue Q.
+/// "RES-Q" wordmark: heavy Inter, red hyphen, blue Q. With [rainbow], each
+/// letter takes one of the four brand accents.
 class Wordmark extends StatelessWidget {
-  const Wordmark({super.key, this.fontSize = 28, this.onDark = false});
+  const Wordmark({super.key, this.fontSize = 28, this.onDark = false, this.rainbow = false});
 
   final double fontSize;
   final bool onDark;
+  final bool rainbow;
 
   @override
   Widget build(BuildContext context) {
@@ -71,11 +80,19 @@ class Wordmark extends StatelessWidget {
     return Semantics(
       label: Brand.name,
       excludeSemantics: true,
-      child: Text.rich(TextSpan(style: base, children: [
+      child: Text.rich(TextSpan(style: base, children: rainbow
+          ? const [
+              TextSpan(text: 'R', style: TextStyle(color: Brand.gBlue)),
+              TextSpan(text: 'E', style: TextStyle(color: Brand.gRed)),
+              TextSpan(text: 'S', style: TextStyle(color: Brand.gYellow)),
+              TextSpan(text: '-', style: TextStyle(color: Color(0xFF9AA0A6))),
+              TextSpan(text: 'Q', style: TextStyle(color: Brand.gGreen)),
+            ]
+          : [
         const TextSpan(text: 'RES'),
         TextSpan(text: '-', style: TextStyle(color: onDark ? Brand.beacon : Brand.signalRed)),
         TextSpan(text: 'Q', style: TextStyle(color: onDark ? Colors.white : Brand.blue)),
-      ])),
+            ])),
     );
   }
 }
@@ -93,4 +110,17 @@ class BrandLockup extends StatelessWidget {
         SizedBox(width: markSize * 0.3),
         Wordmark(fontSize: markSize * 0.62, onDark: onDark),
       ]);
+}
+
+/// Thin four-colour strip: the brand's signature accent line.
+class RainbowBar extends StatelessWidget {
+  const RainbowBar({super.key, this.height = 4});
+
+  final double height;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        height: height,
+        child: Row(children: [for (final c in Brand.rainbow) Expanded(child: ColoredBox(color: c))]),
+      );
 }

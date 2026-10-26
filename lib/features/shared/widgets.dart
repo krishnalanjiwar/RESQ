@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../domain/models.dart';
+import '../../ui/brand.dart';
 import '../../ui/icons.dart';
 
 /// Semantic tones used across chips, banners and status icons. Meaning is
@@ -60,6 +61,7 @@ String capabilityIcon(Capability c) => switch (c) {
       Capability.carry => ResqIcons.group,
       Capability.supplies => ResqIcons.box,
       Capability.shelter => ResqIcons.home,
+      Capability.security => ResqIcons.shield,
       Capability.general => ResqIcons.lifebuoy,
     };
 
@@ -75,8 +77,10 @@ String capabilityLabel(Capability c) => switch (c) {
       Capability.carry => 'Lifting / stretcher',
       Capability.supplies => 'Supplies',
       Capability.shelter => 'Shelter',
+      Capability.security => 'Security / police',
       Capability.general => 'General help',
     };
+
 
 /// Small tonal pill with an optional icon.
 class StatusChip extends StatelessWidget {
@@ -114,6 +118,40 @@ class UrgencyChip extends StatelessWidget {
         urgencyLabel(urgency),
         tone: urgencyTone(urgency),
         icon: urgency == Urgency.critical ? ResqIcons.warning : null,
+      );
+}
+
+Color sosClassColor(Urgency u) => switch (u) {
+      Urgency.critical => Brand.gRed,
+      Urgency.high => const Color(0xFFE37400),
+      Urgency.unknown => Brand.gBlue,
+      Urgency.low => const Color(0xFF5F6368),
+    };
+
+/// Severity class badge, e.g. "SOS-A · Life-threatening". Solid colour so it
+/// reads at a glance; the text carries the meaning for colour-blind users.
+class SosClassBadge extends StatelessWidget {
+  const SosClassBadge(this.urgency, {super.key, this.compact = false});
+
+  final Urgency urgency;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) => Semantics(
+        label: '${urgency.sosClass}, ${urgency.sosClassMeaning}',
+        excludeSemantics: true,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(color: sosClassColor(urgency), borderRadius: BorderRadius.circular(8)),
+          child: Text(
+            compact ? urgency.sosClass : '${urgency.sosClass} · ${urgency.sosClassMeaning}',
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context)
+                .textTheme
+                .labelMedium
+                ?.copyWith(color: Colors.white, fontWeight: FontWeight.w800, letterSpacing: 0.3),
+          ),
+        ),
       );
 }
 

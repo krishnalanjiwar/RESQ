@@ -74,11 +74,36 @@ void main() {
     expect(find.text('Works offline'), findsOneWidget);
     expect(find.byType(Wordmark), findsOneWidget);
     expect(find.byType(BrandMark), findsWidgets);
-    await tester.scrollUntilVisible(find.text('Test and train'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('How will you use RES-Q?'), findsOneWidget);
     expect(find.text('I need help'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('Test and train'), 300, scrollable: find.byType(Scrollable).first);
     expect(find.text('I can help'), findsOneWidget);
+    expect(find.text('Medical card'), findsOneWidget);
     expect(find.text('Test and train'), findsOneWidget);
+  });
+
+  testWidgets('every role page has a Home button that returns to the dashboard', (tester) async {
+    for (final role in NodeRole.values) {
+      await _node.setRole(role);
+      await _pumpApp(tester);
+      await tester.tap(find.byTooltip('Home'));
+      await _settle(tester);
+      expect(_node.role, isNull, reason: role.name);
+      expect(find.text('Works offline'), findsOneWidget);
+    }
+  });
+
+  testWidgets('medical card opens from the dashboard; Back closes only that page', (tester) async {
+    await _node.clearRole();
+    await _pumpApp(tester);
+    await tester.scrollUntilVisible(find.text('Medical card'), 300, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.text('Medical card'));
+    await _settle(tester);
+    expect(find.text('Blood group'), findsOneWidget);
+    await tester.binding.handlePopRoute();
+    await _settle(tester);
+    expect(find.text('Blood group'), findsNothing);
+    expect(find.text('Medical card'), findsOneWidget, reason: 'back on the dashboard');
   });
 
   testWidgets('victim screen renders without layout errors and shows the SOS action', (tester) async {

@@ -14,6 +14,22 @@ enum Urgency {
 
   static Urgency fromWire(Object? v) =>
       values.firstWhere((u) => u.label == v, orElse: () => Urgency.unknown);
+
+  /// Severity class shown to people: SOS-A is life-threatening, SOS-D is minor.
+  /// Unclear requests rank above minor ones, never below.
+  String get sosClass => switch (this) {
+        Urgency.critical => 'SOS-A',
+        Urgency.high => 'SOS-B',
+        Urgency.unknown => 'SOS-C',
+        Urgency.low => 'SOS-D',
+      };
+
+  String get sosClassMeaning => switch (this) {
+        Urgency.critical => 'Life-threatening',
+        Urgency.high => 'Urgent',
+        Urgency.unknown => 'Unclear — check',
+        Urgency.low => 'Minor',
+      };
 }
 
 enum Need {
@@ -49,6 +65,7 @@ enum Capability {
   carry('LIFTING / STRETCHER'),
   supplies('SUPPLIES'),
   shelter('SHELTER'),
+  security('SECURITY / POLICE'),
   general('GENERAL HELP');
 
   const Capability(this.label);
@@ -81,6 +98,24 @@ const Map<HazardKind, Set<Capability>> hazardCapabilities = {
   HazardKind.collapse: {Capability.searchRescue},
   HazardKind.other: {},
 };
+
+/// One-word profession for the requester's "who is coming" line, most
+/// specialised skill first.
+String professionOf(Set<Capability> caps) {
+  for (final (cap, label) in const [
+    (Capability.medicalAdvanced, 'Medical'),
+    (Capability.medicalBasic, 'First aid'),
+    (Capability.fire, 'Firefighter'),
+    (Capability.waterRescue, 'Water rescue'),
+    (Capability.security, 'Security'),
+    (Capability.searchRescue, 'Search & rescue'),
+    (Capability.boat, 'Boat'),
+    (Capability.swimmer, 'Swimmer'),
+  ]) {
+    if (caps.contains(cap)) return label;
+  }
+  return 'Volunteer';
+}
 
 enum NodeRole {
   victim('VICTIM'),
@@ -146,7 +181,10 @@ enum SosEventKind {
   declined(0),
   standDown(0),
   heartbeat(0),
-  cancelled(0);
+  cancelled(0),
+
+  /// The requester's medical card, sealed to the responder who accepted.
+  medicalCard(0);
 
   const SosEventKind(this.progress);
 
@@ -211,6 +249,64 @@ class Credential {
       issuer: json['iss'] as String,
       issuerName: json['issName'] is String ? json['issName'] as String : 'UNKNOWN',
       sig: json['sig'] as String,
+    );
+  }
+}
+
+/// The requester's medical card. Kept encrypted on the phone and shared only
+/// with a responder who accepts their SOS, sealed to that responder's key.
+class MedicalCard {
+  const MedicalCard({
+    this.bloodGroup = '',
+    this.conditions = '',
+    this.allergies = '',
+    this.medications = '',
+    this.contactName = '',
+    this.contactPhone = '',
+    this.notes = '',
+  });
+
+  static const int maxFieldChars = 120;
+  static const List<String> bloodGroups = ['', 'A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
+
+  final String bloodGroup;
+  final String conditions;
+  final String allergies;
+  final String medications;
+  final String contactName;
+  final String contactPhone;
+  final String notes;
+
+  bool get isEmpty => toJson().isEmpty;
+
+  Map<String, String> toJson() => {
+        if (bloodGroup.isNotEmpty) 'bg': bloodGroup,
+        if (conditions.isNotEmpty) 'cond': conditions,
+        if (allergies.isNotEmpty) 'alg': allergies,
+        if (medications.isNotEmpty) 'med': medications,
+        if (contactName.isNotEmpty) 'cn': contactName,
+        if (contactPhone.isNotEmpty) 'cp': contactPhone,
+        if (notes.isNotEmpty) 'note': notes,
+      };
+
+  static MedicalCard? fromJson(Object? json) {
+    if (json is! Map) return null;
+    String f(String key) {
+      final v = json[key];
+      if (v is! String) return '';
+      final t = v.trim();
+      return t.length > maxFieldChars ? t.substring(0, maxFieldChars) : t;
+    }
+
+    final bg = f('bg');
+    return MedicalCard(
+      bloodGroup: bloodGroups.contains(bg) ? bg : '',
+      conditions: f('cond'),
+      allergies: f('alg'),
+      medications: f('med'),
+      contactName: f('cn'),
+      contactPhone: f('cp'),
+      notes: f('note'),
     );
   }
 }

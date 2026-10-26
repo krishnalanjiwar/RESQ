@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../app/providers.dart';
 import '../../ui/icons.dart';
+import '../../ui/motion.dart';
 import 'widgets.dart';
 
-/// Returns to the welcome screen. A responder holding an active assignment is
+/// Returns to the main dashboard from anywhere: closes any pages opened on top
+/// and leaves the current role. A responder holding an active assignment is
 /// asked first, because leaving the role stops their availability broadcast.
 Future<void> backToStart(BuildContext context, WidgetRef ref) async {
   final node = ref.read(nodeProvider);
@@ -20,10 +22,12 @@ Future<void> backToStart(BuildContext context, WidgetRef ref) async {
     );
     if (!ok) return;
   }
+  Sfx.tap();
+  if (context.mounted) Navigator.of(context).popUntil((route) => route.isFirst);
   await node.clearRole();
 }
 
-/// App-bar back arrow (custom SVG) that returns to the welcome screen.
+/// App-bar back arrow (custom SVG) that returns to the dashboard.
 class BackToStartButton extends ConsumerWidget {
   const BackToStartButton({super.key});
 
@@ -35,7 +39,19 @@ class BackToStartButton extends ConsumerWidget {
       );
 }
 
-/// Makes the Android back gesture/button return to the welcome screen instead
+/// Home button shown on every page: one tap to the main dashboard.
+class HomeButton extends ConsumerWidget {
+  const HomeButton({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) => IconButton(
+        tooltip: 'Home',
+        icon: const AppIcon(ResqIcons.home, semanticLabel: 'Home'),
+        onPressed: () => backToStart(context, ref),
+      );
+}
+
+/// Makes the Android back gesture/button return to the dashboard instead
 /// of closing the app. If the status drawer is open, back only closes it.
 ///
 /// [builder] receives the key to put on the page's Scaffold, so the scope can
