@@ -166,6 +166,12 @@ DecodeResult decodeJson(Object? json, {required int nowMs}) {
   if (ts > nowMs + Limits.maxFutureSkew.inMilliseconds) return const DecodeResult.fail('FROM_THE_FUTURE');
   if (exp <= nowMs) return const DecodeResult.fail('EXPIRED');
   if (ttl is! int || ttl < 0 || hop is! int || hop < 0 || hop > 64) return const DecodeResult.fail('BAD_HOPS');
+  // `hop` is unsigned, and the claim verifier widens the plausible distance per
+  // hop. Every relay moves one unit from ttl to hop, so an honest frame always
+  // has hop + ttl <= maxTtl; a larger claim is forged.
+  if (hop + (ttl > Limits.maxTtl ? Limits.maxTtl : ttl) > Limits.maxTtl) {
+    return const DecodeResult.fail('HOPS_EXCEED_BUDGET');
+  }
   if (body is! Map<String, dynamic>) return const DecodeResult.fail('BAD_BODY');
   if (sig is! String || sig.length > 100) return const DecodeResult.fail('BAD_SIG_FIELD');
   if (gh != null && (gh is! String || gh.length > 8)) return const DecodeResult.fail('BAD_GEOHASH');

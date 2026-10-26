@@ -358,14 +358,14 @@ class Simulator {
   }
 
   Future<Uint8List> _craft(LocalIdentity id, MsgType type, Map<String, Object?> body,
-      {int ttl = Limits.maxTtl, String? gh, String? urg, String? forcedSig}) async {
+      {int ttl = Limits.maxTtl, int hop = 0, String? gh, String? urg, String? forcedSig}) async {
     final now = clock.nowMs();
     final msgId = newMessageId();
     final exp = now + type.maxLifetime.inMilliseconds;
     final fields = Envelope.signedFields(id: msgId, type: type, origin: id.id, ts: now, exp: exp, body: body, gh: gh, urg: urg);
     final sig = forcedSig ?? await signatures.sign(canonicalBytes(fields), id);
     return Envelope(
-      id: msgId, type: type, origin: id.id, ts: now, exp: exp, ttl: ttl, hop: 0, body: body, sig: sig, gh: gh, urg: urg,
+      id: msgId, type: type, origin: id.id, ts: now, exp: exp, ttl: ttl, hop: hop, body: body, sig: sig, gh: gh, urg: urg,
     ).toWire();
   }
 
@@ -382,7 +382,12 @@ class Simulator {
   }
 
   /// "One node pretending to be 40 nurses."
-  Future<RedTeamResult> attackSybil({int identities = 40}) async {
+  ///
+  /// With [forgeHop] the attacker marks every fake as already relayed once
+  /// (`hop` is unsigned), posing as an honest relay instead of their origin.
+  /// With [spreadOut] the fakes claim positions hundreds of metres apart,
+  /// dodging the co-location heuristic.
+  Future<RedTeamResult> attackSybil({int identities = 40, bool forgeHop = false, bool spreadOut = false}) async {
     final attacker = await _attackerAt(center.offset(_jitter(200), _jitter(200)), 'ATK-SYBIL');
     final fakes = <LocalIdentity>[];
     for (var i = 0; i < identities; i++) {
@@ -395,8 +400,12 @@ class Simulator {
         'enc': id.public.encKey,
         'name': 'Nurse $i',
         'bat': 100,
-        'loc': {...attacker.position.offset(_jitter(10), _jitter(10)).toJson(), 'acc': 10, 'at': clock.nowMs()},
-      }, ttl: 4));
+        'loc': {
+          ...attacker.position.offset(_jitter(spreadOut ? 250 : 10), _jitter(spreadOut ? 250 : 10)).toJson(),
+          'acc': 10,
+          'at': clock.nowMs(),
+        },
+      }, ttl: 4, hop: forgeHop ? 1 : 0));
     }
     await _settle();
     await run(3);
@@ -420,7 +429,7 @@ class Simulator {
     }
     final checks = neighbours.length * fakeIds.length;
     final result = RedTeamResult(
-      'SYBIL: 1 NODE AS $identities NURSES',
+      'SYBIL: 1 NODE AS $identities NURSES${forgeHop ? ' (FORGED HOP)' : ''}',
       assignedToFake == 0 && suspicious == checks ? AttackOutcome.blocked : (assignedToFake == 0 ? AttackOutcome.flagged : AttackOutcome.notBlocked),
       [
         '$identities identities injected over ${neighbours.length} radio link(s)',

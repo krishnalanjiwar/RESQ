@@ -3,6 +3,7 @@ library;
 
 import 'package:flutter_test/flutter_test.dart' hide Matcher;
 import 'package:resq/core/geo.dart';
+import 'package:resq/domain/chain/claim_verifier.dart';
 import 'package:resq/domain/dispatch/matcher.dart';
 import 'package:resq/domain/models.dart';
 import 'package:resq/domain/trust/trust_agent.dart';
@@ -20,6 +21,7 @@ class _World implements WorldView {
     this.sos = const [],
     this.anchors = const {},
     this.firstSeen = const {},
+    this.self,
   });
 
   @override
@@ -28,13 +30,14 @@ class _World implements WorldView {
   @override
   final Set<String> anchors;
   final Map<String, int> firstSeen;
+  final LocationFix? self;
 
   @override
   int get nowMs => _now;
   @override
   String get selfId => 'observer';
   @override
-  LocationFix? get selfLocation => null;
+  LocationFix? get selfLocation => self;
   @override
   Iterable<SosRecord> get sosRecords => sos;
   @override
@@ -81,17 +84,17 @@ Credential _cred(String subject) => Credential(
       sig: 'x',
     );
 
-SosRecord _sos(String id, {String origin = 'victim', bool sealed = false}) => SosRecord(
+SosRecord _sos(String id, {String origin = 'victim', bool sealed = false, int hop = 1, GeoPoint at = _center}) => SosRecord(
       id: id.padRight(32, '0'),
       origin: origin,
       claimedAtMs: _now - 10000,
       receivedAtMs: _now - 9000,
-      hopAtReceipt: 1,
+      hopAtReceipt: hop,
       urgency: Urgency.critical,
       needs: {Need.medical},
       sealed: sealed,
       readable: !sealed,
-      location: LocationFix(point: _center, accuracyM: 20, fixedAtMs: _now - 10000),
+      location: LocationFix(point: at, accuracyM: 20, fixedAtMs: _now - 10000),
     );
 
 void main() {
@@ -124,6 +127,13 @@ void main() {
     final plan = matcher.plan(openSos: [sealed], view: world, excluded: const {}, busyResponders: const {});
     expect(plan.assignments[sealed.id]!.primary, 'verified');
     expect(plan.results[(sealed.id, 'unverified')]!.eligible, isFalse);
+  });
+
+  test('C4: a 5 km location spoof is implausible even at the largest hop count the decoder admits', () {
+    final world = _World(beacons: const {}, self: LocationFix(point: _center, accuracyM: 20, fixedAtMs: _now));
+    final spoofed = _sos('spoof', hop: Limits.maxTtl, at: _center.offset(5000, 0));
+    final claim = const ClaimVerifier().verify(spoofed, world);
+    expect(claim.reasons.any((r) => r.startsWith('LOCATION_IMPLAUSIBLE')), isTrue, reason: '${claim.reasons}');
   });
 
   test('L1: a responder is never matched to their own SOS', () {

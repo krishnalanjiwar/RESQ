@@ -56,6 +56,24 @@ void main() {
       expect(decodeJson({'v': 1, 'b': deep}, nowMs: now).error, 'FRAME_TOO_DEEP');
     });
     test('unknown version', () => expect(decodeJson({'v': 99}, nowMs: now).error, 'UNSUPPORTED_VERSION'));
+    test('hop count beyond the ttl budget (forged relay distance)', () async {
+      final id = await LocalIdentity.generate();
+      final env = await _signed(id, SignatureService(), ttl: 0);
+      final json = env.toJson()..['hop'] = Limits.maxTtl + 1;
+      expect(decodeJson(json, nowMs: now).error, 'HOPS_EXCEED_BUDGET');
+      json
+        ..['hop'] = 3
+        ..['ttl'] = Limits.maxTtl;
+      expect(decodeJson(json, nowMs: now).error, 'HOPS_EXCEED_BUDGET');
+    });
+    test('honest relays stay within the ttl budget all the way down', () async {
+      final id = await LocalIdentity.generate();
+      var env = await _signed(id, SignatureService(), ttl: Limits.maxTtl);
+      while (env.ttl > 0) {
+        env = decodeFrame(env.relayed().toWire(), nowMs: now).envelope!;
+      }
+      expect(env.hop, Limits.maxTtl);
+    });
     test('expired', () async {
       final id = await LocalIdentity.generate();
       final env = await _signed(id, SignatureService(), now: now - 120000);

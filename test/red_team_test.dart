@@ -27,6 +27,12 @@ void main() {
     expect(r.outcome, isNot(AttackOutcome.notBlocked), reason: r.details.join('\n'));
   });
 
+  test('Sybil posing as a relay (forged hop count) is never assigned', () async {
+    await sim.seedEmergencies();
+    final r = await sim.attackSybil(forgeHop: true);
+    expect(r.outcome, isNot(AttackOutcome.notBlocked), reason: r.details.join('\n'));
+  });
+
   test('forged credential is quarantined', () async {
     final r = await sim.attackForgedCredential();
     expect(r.outcome, AttackOutcome.quarantined, reason: r.details.join('\n'));
